@@ -37,16 +37,22 @@ def _error_text(e) -> str:
 
 
 def _recover_tool_calls_from_error(e) -> list[ToolCall]:
-    """Best-effort: pull the intended tool call(s) out of a Groq `tool_use_failed` error."""
+    """Best-effort: pull the intended tool call(s) out of a Groq `tool_use_failed` error.
+    Deduped — the failed_generation often appears in both str(e) and e.body."""
     text = _error_text(e)
     calls: list[ToolCall] = []
-    for i, m in enumerate(_FAILED_FN_RE.finditer(text)):
-        name = m.group(1)
+    seen: set[tuple[str, str]] = set()
+    for m in _FAILED_FN_RE.finditer(text):
+        name, raw_args = m.group(1), m.group(2)
+        key = (name, raw_args)
+        if key in seen:
+            continue
+        seen.add(key)
         try:
-            args = json.loads(m.group(2))
+            args = json.loads(raw_args)
         except ValueError:
             args = {}
-        calls.append(ToolCall(id=f"recovered_{i}", name=name, arguments=args))
+        calls.append(ToolCall(id=f"recovered_{len(calls)}", name=name, arguments=args))
     return calls
 
 

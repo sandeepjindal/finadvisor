@@ -52,7 +52,14 @@ class _FakeBadRequest(Exception):
     """Mimics Groq's tool_use_failed 400 (carries .body with failed_generation)."""
 
     def __init__(self, failed_generation=None, msg="400"):
-        super().__init__(msg)
+        # Real Groq errors carry the failed_generation in BOTH the string and .body —
+        # this exercises the recovery dedupe.
+        full = (
+            msg
+            if not failed_generation
+            else f"{msg} failed_generation={failed_generation}"
+        )
+        super().__init__(full)
         self.body = (
             {"error": {"failed_generation": failed_generation}}
             if failed_generation
