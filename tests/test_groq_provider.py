@@ -46,3 +46,42 @@ def test_to_provider_tool_result_shape():
     assert d["role"] == "tool"
     assert d["tool_call_id"] == "c1"
     assert d["content"] == "$123"
+
+
+class _FakeBadRequest(Exception):
+    """Mimics Groq's tool_use_failed 400 (carries .body with failed_generation)."""
+
+    def __init__(self, failed_generation=None, msg="400"):
+        super().__init__(msg)
+        self.body = (
+            {"error": {"failed_generation": failed_generation}}
+            if failed_generation
+            else None
+        )
+
+
+def test_recovers_tool_call_from_malformed_groq_generation():
+    p = GroqProvider(api_key="k")
+    p._client = MagicMock()
+    p._client.chat.completions.create.side_effect = _FakeBadRequest(
+        '<function=assess_exit[]{"ticker": "NVDA"}</function>'
+    )
+    res = p.ask_with_tools(
+        [Message("user", "sell nvda?")], [ToolSpec("assess_exit", "x", {})]
+    )
+    assert len(res.tool_calls) == 1
+    assert res.tool_calls[0].name == "assess_exit"
+    assert res.tool_calls[0].arguments == {"ticker": "NVDA"}
+
+
+def test_falls_back_to_plain_answer_when_unrecoverable():
+    p = GroqProvider(api_key="k")
+    p._client = MagicMock()
+    # first call (with tools) errors with no recoverable function; second call (ask) answers
+    p._client.chat.completions.create.side_effect = [
+        _FakeBadRequest(None, "boom"),
+        _resp(content="plain answer"),
+    ]
+    res = p.ask_with_tools([Message("user", "hi")], [ToolSpec("get_quote", "x", {})])
+    assert res.tool_calls == []
+    assert res.text == "plain answer"

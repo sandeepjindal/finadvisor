@@ -7,6 +7,7 @@ or network. Step 0.4.
 from __future__ import annotations
 
 import json
+import re
 
 from llm.base import (
     LLMProvider,
@@ -16,6 +17,37 @@ from llm.base import (
     ToolResultMessage,
     ToolSpec,
 )
+
+
+# Matches Groq/Llama's malformed tool syntax, e.g.
+#   <function=assess_exit[]{"ticker": "NVDA"}</function>
+_FAILED_FN_RE = re.compile(
+    r"<function=([A-Za-z_][\w-]*)[^{>]*?(\{.*?\})\s*</function>", re.DOTALL
+)
+
+
+def _error_text(e) -> str:
+    parts = [str(e)]
+    body = getattr(e, "body", None)
+    if isinstance(body, dict):
+        fg = body.get("error", {}).get("failed_generation")
+        if fg:
+            parts.append(fg)
+    return "\n".join(p for p in parts if p)
+
+
+def _recover_tool_calls_from_error(e) -> list[ToolCall]:
+    """Best-effort: pull the intended tool call(s) out of a Groq `tool_use_failed` error."""
+    text = _error_text(e)
+    calls: list[ToolCall] = []
+    for i, m in enumerate(_FAILED_FN_RE.finditer(text)):
+        name = m.group(1)
+        try:
+            args = json.loads(m.group(2))
+        except ValueError:
+            args = {}
+        calls.append(ToolCall(id=f"recovered_{i}", name=name, arguments=args))
+    return calls
 
 
 class GroqProvider(LLMProvider):
@@ -88,12 +120,21 @@ class GroqProvider(LLMProvider):
     def ask_with_tools(
         self, messages: list[Message], tools: list[ToolSpec]
     ) -> ToolCallResult:
-        resp = self.client.chat.completions.create(
-            model=self._model,
-            messages=self._to_messages(messages),
-            tools=self._to_tools(tools),
-            tool_choice="auto",
-        )
+        try:
+            resp = self.client.chat.completions.create(
+                model=self._model,
+                messages=self._to_messages(messages),
+                tools=self._to_tools(tools),
+                tool_choice="auto",
+            )
+        except Exception as e:  # noqa: BLE001
+            # Groq/Llama sometimes emits a malformed tool call and the API 400s with
+            # `tool_use_failed`. Recover the intended call from the error; else fall back
+            # to a plain (tool-less) answer so the user is never blocked.
+            recovered = _recover_tool_calls_from_error(e)
+            if recovered:
+                return ToolCallResult(text=None, tool_calls=recovered)
+            return ToolCallResult(text=self.ask(messages), tool_calls=[])
         calls = self.parse_tool_calls(resp)
         text = resp.choices[0].message.content
         return ToolCallResult(text=text, tool_calls=calls)
