@@ -1,0 +1,30 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Virtualenvs
+.venv/
+
+# Build artifacts
+build/
+dist/
+
+# Local brain (SQLite file + WAL sidecars)
+*.db
+*.db-wal
+*.db-shm
+
+# Runtime artifacts / Docker bind-mount volume (NOT the data/ source package)
+/.runtime/
+
+# User-dropped documents for ingestion (keep the seeded folder structure via .gitkeep)
+/documents/**
+!/documents/**/
+!/documents/.gitkeep
+!/documents/**/.gitkeep

@@ -1,0 +1,21 @@
+# Tunable decision thresholds — the agent's "skills" config. Edit this (no code change)
+# to change how the screener, Exit Advisor, and monitoring behave.
+
+# Relative importance of the five signal families (used by the screener).
+signal_weights:
+  fundamental: 0.30
+  technical: 0.30
+  sentiment: 0.15
+  macro: 0.15
+  catalyst: 0.10
+
+# Triggers for proactive alerts and exit reasoning.
+alert_thresholds:
+  daily_move_pct: 7.0          # alert on a single-day move beyond +/- this
+  rsi_overbought: 70           # RSI above this = stretched (trim signal)
+  rsi_oversold: 30             # RSI below this = washed out
+  valuation_percentile: 85     # P/E in top X% of own history = fragile
+  trailing_stop_pct: 12.0      # default trailing-stop distance
+
+cooldown_hours: 24             # min hours between repeat alerts for the same trigger
+max_position_weight: 0.25      # flag a holding heavier than this share of portfolio

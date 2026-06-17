@@ -1,0 +1,26 @@
+# Run with: docker compose up --build
+# SQLite is embedded — there is NO database container. The brain (brain.db) and your
+# ingested documents persist on host-mounted volumes.
+
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      - DB_PATH=/data/brain.db
+    volumes:
+      - ./.runtime:/data          # brain.db lives here, survives restarts
+      - ./documents:/app/documents # drop PDFs/CSVs here for ingestion
+    restart: unless-stopped       # 24/7 for morning digest + monitoring
+
+  # Optional: run a fully-local/private LLM instead of Groq.
+  # 1) uncomment this service, 2) set in .env: LLM_PROVIDER=ollama and
+  #    OLLAMA_HOST=http://ollama:11434
+  # ollama:
+  #   image: ollama/ollama
+  #   volumes:
+  #     - ollama:/root/.ollama
+  #   restart: unless-stopped
+
+# volumes:
+#   ollama:
