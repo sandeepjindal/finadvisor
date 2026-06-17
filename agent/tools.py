@@ -44,11 +44,12 @@ def _ticker_param(desc: str) -> dict:
 
 
 class ToolRegistry:
-    def __init__(self, market, conn, search=None, rss=None):
+    def __init__(self, market, conn, search=None, rss=None, llm=None):
         self.market = market
         self.conn = conn
         self.search = search
         self.rss = rss or RSSProvider()
+        self.llm = llm  # optional; enables LLM-enriched assess_exit (Step 5B)
         self._tools: dict[str, _Tool] = {}
         self._register_all()
         self.assert_read_only()
@@ -98,6 +99,27 @@ class ToolRegistry:
                 "required": ["topic"],
             },
             self._read_playbook,
+        )
+        self._add(
+            "get_macro",
+            "Current macro indicators (interest rate, CPI, GDP, unemployment).",
+            {"type": "object", "properties": {}},
+            self._get_macro,
+        )
+        self._add(
+            "assess_exit",
+            "Run the Exit Advisor for a holding (HOLD/TRIM/SELL + transient/structural + "
+            "redeploy). Uses your stored holding, or pass shares & avg_cost inline.",
+            {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string"},
+                    "shares": {"type": "number"},
+                    "avg_cost": {"type": "number"},
+                },
+                "required": ["ticker"],
+            },
+            self._assess_exit,
         )
         self._add(
             "get_filings",
@@ -257,6 +279,53 @@ class ToolRegistry:
         if not fs:
             return ToolOutput("(no recent filings)", [])
         return ToolOutput("\n".join(f"- {f.form} {f.date}: {f.url}" for f in fs), [])
+
+    def _get_macro(self, args) -> ToolOutput:
+        from data.macro import get_macro
+
+        try:
+            m = get_macro()
+        except Exception as e:  # noqa: BLE001 - fredapi/key optional
+            return ToolOutput(f"macro data unavailable: {e}", [])
+        parts, cites = [], []
+        for k, v in m.items():
+            parts.append(f"{k}={v}")
+            if isinstance(v, (int, float)):
+                cites.append(Citation(k, v, "fred", "now"))
+        return ToolOutput("Macro: " + ", ".join(parts), cites)
+
+    def _assess_exit(self, args) -> ToolOutput:
+        from agent.exit_advisor import (
+            enrich_exit_verdict,
+            evaluate_exit,
+            format_exit_verdict,
+        )
+        from agent.knowledge import load_rules
+        from brain.holdings import Holding, list_holdings
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        shares, avg_cost = args.get("shares"), args.get("avg_cost")
+        holding = None
+        if shares is not None and avg_cost is not None:
+            holding = Holding(0, t, float(shares), float(avg_cost), "", "")
+        else:
+            holding = next((h for h in list_holdings(self.conn) if h.ticker == t), None)
+        if holding is None:
+            return ToolOutput(
+                f"No holding for {t}. Provide shares & avg_cost, or add via /portfolio.",
+                [],
+            )
+        verdict = evaluate_exit(holding, self.market, self.conn, load_rules())
+        if self.llm is not None:
+            context = ""
+            try:
+                arts = self.rss.latest(t)
+                context = "\n".join(f"- {a.title}: {a.summary}" for a in arts[:5])
+            except Exception:  # noqa: BLE001 - context is best-effort
+                pass
+            verdict = enrich_exit_verdict(verdict, context, self.llm)
+        return ToolOutput(format_exit_verdict(verdict), verdict.citations)
 
     def _list_documents(self, args) -> ToolOutput:
         from brain.documents import list_documents

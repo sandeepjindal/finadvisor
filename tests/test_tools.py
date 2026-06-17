@@ -38,6 +38,8 @@ def test_registry_has_expected_readonly_tools(tmp_path):
         "search_news",
         "recall_analysis",
         "read_playbook",
+        "get_macro",
+        "assess_exit",
         "get_filings",
         "list_documents",
         "read_document",
@@ -78,3 +80,33 @@ def test_read_playbook(tmp_path):
     reg = _registry(tmp_path)
     out = reg.call("read_playbook", {"topic": "exit_rules"})
     assert "stop" in out.text.lower()
+
+
+def test_assess_exit_inline_holding(tmp_path):
+    q = Quote(
+        "NVDA",
+        120.0,
+        100.0,
+        20.0,
+        20.0,
+        1000,
+        "USD",
+        "2026-06-16T00:00:00Z",
+        "yfinance",
+    )
+    reg = _registry(tmp_path, quote=q)  # llm=None -> deterministic
+    out = reg.call("assess_exit", {"ticker": "NVDA", "shares": 30, "avg_cost": 100})
+    assert "NVDA" in out.text
+    assert any(c.metric == "price" for c in out.citations)
+
+
+def test_assess_exit_no_holding(tmp_path):
+    reg = _registry(tmp_path)
+    out = reg.call("assess_exit", {"ticker": "NVDA"})
+    assert "No holding" in out.text
+
+
+def test_get_macro_graceful(tmp_path):
+    reg = _registry(tmp_path)
+    out = reg.call("get_macro", {})
+    assert isinstance(out, ToolOutput)  # graceful whether fredapi/key present or not

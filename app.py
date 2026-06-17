@@ -53,7 +53,7 @@ def bootstrap() -> SimpleNamespace:
     conn = init_db(cfg.db_path)
     llm = get_llm(cfg)
     market = MarketData(cache_conn=conn)
-    tools = ToolRegistry(market=market, conn=conn, search=get_search(cfg))
+    tools = ToolRegistry(market=market, conn=conn, search=get_search(cfg), llm=llm)
     _ingest_documents(conn, log)
 
     async def handle_message(text: str) -> str:
