@@ -1,107 +1,206 @@
 # Personal Financial Advisor 🤖📈
 
-A **standalone, open-source, model-independent** AI agent that acts as a personal
-financial advisor over Discord. It reasons over live market data, fundamentals, news,
-and macro factors; remembers its own analyses in a local "brain"; advises on entries,
-**exits**, and capital redeployment; and proactively monitors a portfolio you tell it
-about.
+A **standalone, open-source, model-independent** AI agent that acts as your personal
+financial advisor over **Discord** (or a terminal). It reasons over live market data,
+fundamentals, technicals, news, SEC filings, and macro factors; remembers its own analyses
+in a local "brain"; advises on entries, **exits**, and capital redeployment; and can
+proactively monitor a portfolio you tell it about.
 
-> ⚠️ **Advisory only.** This agent has **no access to bank/brokerage accounts** and
-> **cannot place trades**. Nothing it says is financial advice — markets carry risk.
+> ⚠️ **Advisory only — not financial advice.** This agent has **no access to bank or
+> brokerage accounts** and **cannot place trades**. Markets carry risk; you can lose money.
+> Always do your own research and consider a licensed advisor.
 
-## Highlights
+---
 
-- **Conversational Q&A** — ask anything about a stock or fund, get a reasoned,
-  data-grounded answer with citations and explicit uncertainty.
-- **Exit Advisor** — separates *temporary dips* from *structural thesis breaks* and
-  tells you when to trim/sell and where to redeploy.
-- **Proactive monitoring** — knows your holdings, watches them daily, and pings you on
-  meaningful moves (no spam).
+## ✨ Features
+
+- **Conversational Q&A** — *"What's NVDA looking like?"* → a reasoned, **data-grounded**
+  answer with cited numbers and explicit uncertainty.
+- **Exit Advisor** ⭐ — *"Should I sell my NVDA?"* → HOLD / TRIM / SELL, with a
+  **transient-vs-structural** call, a concrete rule (trailing stop), and a **redeploy idea**
+  — refined by an optional LLM layer.
+- **Portfolio tracking** — natural language (*"I own 30 NVDA at $450"*), `/portfolio`
+  commands, or broker **CSV import**.
+- **Proactive monitoring** — daily job watches your holdings and pings you on meaningful
+  moves (cooldown-deduped, no spam).
+- **Morning digest** — scheduled, screened stock/fund ideas.
 - **Local "brain"** — a single SQLite file remembers every analysis to inform future
-  buy/sell decisions.
-- **Free & model-independent** — defaults to the free [Groq](https://console.groq.com)
-  tier (open models); swap to local [Ollama](https://ollama.com), Gemini, Claude, or
-  OpenAI with one env var. No Meta or vendor lock-in.
-- **Editable "skills"** — tune behavior by editing markdown playbooks in `knowledge/`
-  and thresholds in `rules.yaml` — no code changes.
+  decisions; keyword search now, **semantic recall** planned.
+- **Document ingestion** — drop PDFs/CSVs in `documents/`; the agent reads and searches them.
+- **Free & model-independent** — defaults to the free [Groq](https://console.groq.com) tier
+  (open models); swap to local [Ollama](https://ollama.com), Gemini, Claude, or OpenAI with
+  one env var. No vendor lock-in.
+- **Editable "skills"** — tune behavior by editing markdown in `knowledge/` and thresholds
+  in `rules.yaml` — no code changes.
+- **Guardrails first** — read-only tools (cannot trade), prompt-injection isolation,
+  programmatic number-grounding, Discord whitelist, secret-redacted logs, SSRF protection.
 
-## Prerequisites
+---
 
-- **Python 3.11+** and [`uv`](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
-- A free **Groq API key** — https://console.groq.com (or use local Ollama, see below)
-- A **Discord bot token** + your Discord **user ID**:
-  1. https://discord.com/developers/applications → *New Application* → **Bot** → copy token; enable **Message Content Intent**.
-  2. **OAuth2 → URL Generator** → scope `bot` + Send/Read Messages → open URL → add the bot to a private server you create (left sidebar → `+`).
-  3. Your user ID: Discord → Settings → Advanced → **Developer Mode**, then right-click yourself → **Copy User ID**.
+## 🧠 How it works
 
-## Setup — local
+```
+ Discord / CLI ──► Agent Engine (tool-calling loop) ──► LLM (Groq/Ollama/…)
+                          │
+        ┌─────────────────┼───────────────┬──────────────┐
+        ▼                 ▼               ▼              ▼
+   Market data       News / search     The "Brain"     Knowledge
+   (yfinance,        (RSS, ddgs,       (SQLite:        (playbooks +
+    +OpenBB)          SEC EDGAR, FRED)  analyses,        rules.yaml)
+                                        holdings, …)
+                          ▲
+                    Scheduler (daily crawl, morning digest, monitoring)
+```
+
+The LLM is given **read-only tools** (`get_quote`, `get_fundamentals`, `get_technicals`,
+`search_news`, `get_filings`, `get_macro`, `assess_exit`, `recall_analysis`,
+`read_playbook`, document tools) and decides which to call. Every figure it reports is
+**validated against tool output** so it can't fabricate prices/ratios.
+
+---
+
+## 🚀 Quickstart (TL;DR)
 
 ```bash
-git clone <your-repo-url> fin-advisor && cd fin-advisor
-./scripts/setup.sh                         # creates .env from template
-#   edit .env: DISCORD_TOKEN, DISCORD_ALLOWED_IDS, GROQ_API_KEY
+git clone https://github.com/ashuaeron/Financial-Advisor.git fin-advisor
+cd fin-advisor
+curl -LsSf https://astral.sh/uv/install.sh | sh        # install uv (mac/linux)
+cp .env.example .env                                   # add GROQ_API_KEY (free)
 uv sync --extra data --extra news --extra documents
-uv run python app.py                       # then DM your bot
+uv run python scripts/chat.py                          # chat in your terminal — no Discord needed
 ```
 
-## Setup — Docker (recommended for always-on)
+---
+
+## ✅ Prerequisites
+
+- **Python 3.11+** and [`uv`](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- A free **Groq API key** — https://console.groq.com → API Keys. *(Or run fully local with
+  [Ollama](https://ollama.com) — no key needed.)*
+- **For Discord** (optional — the CLI works without it):
+  1. **https://discord.com/developers/applications** → *New Application* → **Bot** →
+     *Reset Token* → copy. Enable **Message Content Intent**.
+  2. **OAuth2 → URL Generator** → scope `bot` + *Send Messages* + *Read Message History* →
+     open the URL → add the bot to a **private server you create** (Discord left sidebar →
+     green `+` → *Create My Own*).
+  3. Your **user ID**: Discord → *Settings → Advanced → Developer Mode* on, then right-click
+     your name → *Copy User ID*.
+
+---
+
+## 🔧 Install
 
 ```bash
-cp .env.example .env   # fill in keys
-docker compose up --build
+uv sync --extra data --extra news --extra documents
 ```
-SQLite is **embedded** — there is no database container. The brain (`brain.db`) and your
-`documents/` persist on host-mounted volumes (`./.runtime`, `./documents`).
+`uv` creates a virtualenv and installs locked dependencies. Extras are opt-in:
 
-## Cloud / 24/7 monitoring
+| Extra | Adds |
+|-------|------|
+| `data` | yfinance, ta, pandas, numpy (quotes, fundamentals, technicals) |
+| `news` | feedparser, trafilatura, ddgs, vaderSentiment (news + search + sentiment) |
+| `documents` | pypdf (ingest PDFs) |
+| `macro` | fredapi (macro indicators) |
+| `finbert` | transformers + torch (finance sentiment) |
+| `semantic` | sentence-transformers + sqlite-vec (semantic recall — planned) |
+| `backtest` | vectorbt (or pure-pandas fallback, built-in) |
+| `openbb` | OpenBB enrichment provider |
+| `encryption` | pysqlcipher3 (encrypted brain) |
 
-For the morning digest and proactive exit alerts to fire while you're away, run it on an
-always-on host — a cheap VPS, a Raspberry Pi, or any free-tier box:
+---
 
-```bash
-git clone <repo> && cd fin-advisor && cp .env.example .env   # fill keys
-docker compose up -d --build                                  # restart: unless-stopped
-```
+## ⚙️ Configuration
 
-## Configuration
-
-All config is via `.env` (see `.env.example`). Key knobs:
+Copy `.env.example` → `.env` and fill in. Key settings:
 
 | Var | Purpose |
 |-----|---------|
-| `LLM_PROVIDER` | `groq` (free, default) · `ollama` (local/private) · `gemini`/`claude`/`openai` |
-| `GROQ_API_KEY` / `GROQ_MODEL` | Groq credentials/model |
+| `LLM_PROVIDER` | `groq` (default) · `ollama` (local) · `gemini`/`claude`/`openai` |
+| `GROQ_API_KEY` / `GROQ_MODEL` | Groq credentials / model |
+| `OLLAMA_MODEL` | model when `LLM_PROVIDER=ollama` |
 | `DISCORD_TOKEN` / `DISCORD_ALLOWED_IDS` | bot token + your whitelisted user id(s) |
 | `DISCORD_DIGEST_CHANNEL_ID` | channel for the morning digest |
 | `MARKET_TZ` / `DIGEST_TIME` | when the daily digest runs |
 | `ARTICLE_RETENTION_DAYS` | prune crawled article text after N days |
-| `WEB_SEARCH_BACKEND` | `ddgs` (free) or `tavily` |
+| `WEB_SEARCH_BACKEND` | `ddgs` (free) / `tavily` / `mcp` |
 | `PRIVACY_MODE` | `local` routes portfolio questions to Ollama |
 
-**Switch model** = change one line: `LLM_PROVIDER=ollama`. **Tune behavior** = edit the
-markdown in `knowledge/` and thresholds in `rules.yaml` — no code changes.
+**Switch model** = one line (`LLM_PROVIDER=ollama`). **Tune behavior** = edit `knowledge/*.md`
++ `rules.yaml`.
 
-### Optional feature extras (install only what you need)
-`uv sync --extra macro` (FRED) · `--extra finbert` (finance sentiment) ·
-`--extra semantic` (vector recall) · `--extra backtest` · `--extra openbb` · `--extra encryption`
+---
 
-## Usage
+## ▶️ Run
 
-- Ask anything: *"What's NVDA looking like?"*, *"Which index fund for ~10%/yr?"*
-- Track holdings: `/portfolio add NVDA 30 450` or *"I own 30 NVDA at $450"*; drop a broker CSV into `documents/portfolio/`
-- Exit guidance: *"I have 30 NVDA, hold or sell?"*
+**Terminal chat (fastest — only needs a Groq key):**
+```bash
+uv run python scripts/chat.py
+```
+
+**Discord bot:**
+```bash
+uv run python app.py        # then DM your bot or @mention it
+```
+
+**Docker (single container; brain + documents persist on volumes):**
+```bash
+docker compose up --build
+```
+SQLite is embedded — there is **no database container**. For 24/7 (morning digest +
+monitoring), run it on an always-on host (VPS / Raspberry Pi / free-tier box).
+
+---
+
+## 💡 Usage
+
+- Ask: *"What's NVDA looking like?"*, *"Compare VOO vs QQQ for ~10%/yr."*
+- Track: `/portfolio add NVDA 30 450` · *"I own 30 NVDA at $450"* · drop a CSV in
+  `documents/portfolio/`
+- **Exit guidance:** *"Should I sell my NVDA?"*
 - Watchlist: `/watchlist add NVDA ai leader`
-- Drop research PDFs into `documents/reports/` — the agent can read/search them
+- Research: drop a PDF in `documents/reports/` → *"summarize my NVDA report"*
 
-## Data & backup
+---
 
-Everything lives in `brain.db` + `documents/`. Back up = copy those. Delete `brain.db` to reset.
+## 🧪 Testing
 
-## Design & plan
+```bash
+uv run pytest -q                 # offline suite (mocked) — 180+ tests
+```
+Full real-scenario walkthrough (live APIs + Discord/CLI, guardrail checks): see
+**[`docs/TESTING.md`](docs/TESTING.md)**.
 
-See [`docs/plans/`](docs/plans/):
-- `2026-06-16-personal-financial-advisor-design.md` — full architecture & decisions
-- `2026-06-16-personal-financial-advisor-implementation-plan-v2.md` — build plan
+---
+
+## 🗂️ Project structure
+
+```
+app.py · config.py · http_client.py · logging_setup.py · rules.yaml
+llm/ · data/ · brain/ · agent/ · bot/ · scheduler/ · security/ · backtest/
+knowledge/ (editable playbooks) · documents/ (your inbox) · scripts/ · tests/
+docs/plans/ (design + implementation plan) · docs/TESTING.md
+```
+
+---
+
+## 🔒 Security & guardrails
+
+Capability restriction (no trade/exec tools), prompt-injection isolation
+(`<untrusted>` + spoof neutralization), programmatic number-grounding, Discord whitelist,
+SSRF-safe fetch, parameterized SQL, secret-redacted logs, advisory-only disclaimers,
+audit log. Your `.env` is git-ignored — keys never reach the repo.
+
+---
+
+## 🗺️ Roadmap
+
+- ✅ Phases 0–4: Q&A, digest, watchlist, portfolio, Exit Advisor, monitoring, documents,
+  filings, macro, backtest, packaging.
+- ✅ Phase 5A/B: Exit Advisor + macro wired into chat; LLM-enriched exit reasoning.
+- 🔜 Phase 5C: semantic (vector) recall over the brain (design in `docs/plans/`).
+- 🔜 WhatsApp adapter; always-on hosting recipe.
+
+---
 
 ## License
 
