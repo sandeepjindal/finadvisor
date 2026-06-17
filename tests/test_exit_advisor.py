@@ -1,6 +1,10 @@
 import pandas as pd
-
-from agent.exit_advisor import evaluate_exit, format_exit_verdict
+from agent.exit_advisor import (
+    enrich_exit_verdict,
+    evaluate_exit,
+    ExitVerdict,
+    format_exit_verdict,
+)
 from agent.knowledge import load_rules
 from brain.db import init_db
 from brain.holdings import Holding
@@ -78,3 +82,41 @@ def test_unavailable_quote_holds(tmp_path):
 
     v = evaluate_exit(h, Dead(), conn, load_rules())
     assert v.action == "HOLD"
+
+
+class _FakeLLM:
+    def __init__(self, resp):
+        self.resp = resp
+
+    def ask(self, messages):
+        return self.resp
+
+
+def test_enrich_sets_classification_and_rationale():
+    base = ExitVerdict("NVDA", "TRIM", "transient", 10.0, ["RSI 74 overbought"])
+    out = enrich_exit_verdict(
+        base,
+        "guidance cut; demand falling",
+        _FakeLLM(
+            "classification: structural\nrationale: guidance was cut, demand weakening"
+        ),
+    )
+    assert out.classification == "structural"
+    assert out.action == "TRIM"  # deterministic action is never flipped
+    assert "guidance" in (out.llm_rationale or "").lower()
+
+
+def test_enrich_none_llm_is_noop():
+    base = ExitVerdict("NVDA", "HOLD", "transient", 5.0, [])
+    out = enrich_exit_verdict(base, "ctx", None)
+    assert out.llm_rationale is None and out.classification == "transient"
+
+
+def test_enrich_llm_error_is_safe():
+    class Boom:
+        def ask(self, messages):
+            raise RuntimeError("llm down")
+
+    base = ExitVerdict("NVDA", "SELL", "structural", -5.0, [])
+    out = enrich_exit_verdict(base, "ctx", Boom())
+    assert out.action == "SELL"  # unchanged, no crash
