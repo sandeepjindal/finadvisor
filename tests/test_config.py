@@ -47,6 +47,20 @@ def test_config_tavily_backend_requires_key():
         load_config(env)
 
 
+def test_config_tolerates_inline_comments():
+    # python-dotenv can keep inline "# ..." as the value; config must strip it.
+    env = dict(BASE_ENV)
+    env["LLM_PROVIDER"] = "groq   # the provider"
+    env["DISCORD_ALLOWED_IDS"] = "123  # my id"
+    env["DISCORD_DIGEST_CHANNEL_ID"] = "   # channel id for the morning digest"
+    env["MAX_TOOL_ITERS"] = "6  # cap"
+    cfg = load_config(env)
+    assert cfg.llm_provider == "groq"
+    assert cfg.discord_allowed_ids == frozenset({123})
+    assert cfg.discord_digest_channel_id is None
+    assert cfg.max_tool_iters == 6
+
+
 def test_config_bad_int_raises():
     env = dict(BASE_ENV)
     env["MAX_TOOL_ITERS"] = "notanint"

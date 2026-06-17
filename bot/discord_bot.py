@@ -11,11 +11,25 @@ import inspect
 
 import discord
 from bot.formatting import chunk_message
+from logging_setup import get_logger
 from security.guards import is_authorized
+
+log = get_logger("bot")
 
 
 async def route_message(message, allowed_ids, handler):
-    """Return the handler's reply for authorized users, else None (silently ignored)."""
+    """Return the handler's reply.
+
+    - If no whitelist is configured (empty), reply with the sender's user ID so you can
+      discover it for DISCORD_ALLOWED_IDS (onboarding helper).
+    - Otherwise dispatch only for authorized users; ignore everyone else (returns None).
+    """
+    if not allowed_ids:
+        return (
+            f"👋 Your Discord user ID is `{message.author.id}`.\n"
+            "Add it to `DISCORD_ALLOWED_IDS` in `.env` and restart, then I'll answer your "
+            "questions. ⚠️ Not financial advice."
+        )
     if not is_authorized(message.author.id, allowed_ids):
         return None
     result = handler(message.content)
@@ -33,6 +47,8 @@ def build_bot(cfg, handle_message):
     async def on_message(message):  # pragma: no cover - exercised via live E2E
         if message.author == client.user:
             return
+        # Always log the sender's id so you can read it from the terminal too.
+        log.info("incoming message from user_id=%s", message.author.id)
         reply = await route_message(message, cfg.discord_allowed_ids, handle_message)
         if reply:
             for chunk in chunk_message(reply):

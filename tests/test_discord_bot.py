@@ -35,6 +35,19 @@ async def test_unauthorized_message_ignored():
 
 
 @pytest.mark.asyncio
+async def test_empty_whitelist_returns_user_id_for_discovery():
+    called = []
+
+    def handler(text):
+        called.append(text)
+        return "should not run"
+
+    reply = await route_message(_msg(555, "hi"), set(), handler)
+    assert "555" in reply  # tells the user their id
+    assert called == []  # handler not invoked in discovery mode
+
+
+@pytest.mark.asyncio
 async def test_async_handler_supported():
     async def handler(text):
         return f"async: {text}"

@@ -37,7 +37,17 @@ class Config:
     privacy_mode: str
 
 
+def _clean(raw: str | None) -> str | None:
+    """Strip surrounding whitespace and any inline `# comment` (a common .env mistake;
+    none of our values legitimately contain '#'). Returns None for empty results."""
+    if raw is None:
+        return None
+    value = raw.split("#", 1)[0].strip()
+    return value or None
+
+
 def _parse_ids(raw: str | None) -> frozenset[int]:
+    raw = _clean(raw)
     if not raw:
         return frozenset()
     ids = set()
@@ -52,7 +62,8 @@ def _parse_ids(raw: str | None) -> frozenset[int]:
 
 
 def _parse_int(raw: str | None, default: int, name: str) -> int:
-    if raw is None or raw == "":
+    raw = _clean(raw)
+    if raw is None:
         return default
     try:
         return int(raw)
@@ -61,7 +72,8 @@ def _parse_int(raw: str | None, default: int, name: str) -> int:
 
 
 def _opt_int(raw: str | None) -> int | None:
-    if raw is None or raw.strip() == "":
+    raw = _clean(raw)
+    if raw is None:
         return None
     try:
         return int(raw)
@@ -75,48 +87,48 @@ _VALID_PROVIDERS = {"groq", "ollama", "gemini", "claude", "openai"}
 def load_config(env: dict[str, str] | None = None) -> Config:
     env = os.environ if env is None else env
 
-    provider = env.get("LLM_PROVIDER", "groq").strip().lower()
+    provider = (_clean(env.get("LLM_PROVIDER")) or "groq").lower()
     if provider not in _VALID_PROVIDERS:
         raise ConfigError(
             f"LLM_PROVIDER must be one of {sorted(_VALID_PROVIDERS)}, got {provider!r}"
         )
 
-    discord_token = env.get("DISCORD_TOKEN", "").strip()
+    discord_token = _clean(env.get("DISCORD_TOKEN"))
     if not discord_token:
         raise ConfigError("DISCORD_TOKEN is required")
 
-    groq_api_key = env.get("GROQ_API_KEY") or None
-    tavily_api_key = env.get("TAVILY_API_KEY") or None
+    groq_api_key = _clean(env.get("GROQ_API_KEY"))
+    tavily_api_key = _clean(env.get("TAVILY_API_KEY"))
 
     if provider == "groq" and not groq_api_key:
         raise ConfigError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
 
-    web_search_backend = env.get("WEB_SEARCH_BACKEND", "ddgs").strip().lower()
+    web_search_backend = (_clean(env.get("WEB_SEARCH_BACKEND")) or "ddgs").lower()
     if web_search_backend == "tavily" and not tavily_api_key:
         raise ConfigError("TAVILY_API_KEY is required when WEB_SEARCH_BACKEND=tavily")
 
-    privacy_mode = env.get("PRIVACY_MODE", "off").strip().lower()
+    privacy_mode = (_clean(env.get("PRIVACY_MODE")) or "off").lower()
     if privacy_mode not in {"off", "local"}:
         raise ConfigError("PRIVACY_MODE must be 'off' or 'local'")
 
     cfg = Config(
         llm_provider=provider,
         groq_api_key=groq_api_key,
-        groq_model=env.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip(),
-        ollama_model=env.get("OLLAMA_MODEL", "llama3.1").strip(),
+        groq_model=_clean(env.get("GROQ_MODEL")) or "llama-3.3-70b-versatile",
+        ollama_model=_clean(env.get("OLLAMA_MODEL")) or "llama3.1",
         discord_token=discord_token,
         discord_allowed_ids=_parse_ids(env.get("DISCORD_ALLOWED_IDS")),
         discord_digest_channel_id=_opt_int(env.get("DISCORD_DIGEST_CHANNEL_ID")),
-        db_path=env.get("DB_PATH", "./brain.db").strip(),
+        db_path=_clean(env.get("DB_PATH")) or "./brain.db",
         article_retention_days=_parse_int(
             env.get("ARTICLE_RETENTION_DAYS"), 90, "ARTICLE_RETENTION_DAYS"
         ),
         max_tool_iters=_parse_int(env.get("MAX_TOOL_ITERS"), 6, "MAX_TOOL_ITERS"),
-        market_tz=env.get("MARKET_TZ", "America/New_York").strip(),
-        digest_time=env.get("DIGEST_TIME", "08:30").strip(),
+        market_tz=_clean(env.get("MARKET_TZ")) or "America/New_York",
+        digest_time=_clean(env.get("DIGEST_TIME")) or "08:30",
         web_search_backend=web_search_backend,
         tavily_api_key=tavily_api_key,
-        log_level=env.get("LOG_LEVEL", "INFO").strip().upper(),
+        log_level=(_clean(env.get("LOG_LEVEL")) or "INFO").upper(),
         privacy_mode=privacy_mode,
     )
 
