@@ -291,3 +291,65 @@ Postgres is an optional future swap for multi-user.
 > the session transcript. It is now backed up via **dotsync2** (`fin-advisor` path) and has
 > a **GitHub remote** (`ashuaeron/Financial-Advisor`); push from a machine with open
 > internet (this devserver's proxy blocks github.com).
+
+---
+
+## 16. Semantic Recall (Phase 5C — detailed design)
+
+**Problem it solves.** Today the brain retrieves by *keywords* (`search_news`/
+`search_documents` via SQL `LIKE`/FTS5), which only matches exact words. Semantic recall
+retrieves by *meaning*: a query like "NVIDIA data-center demand" should surface an article
+titled "Hyperscaler GPU orders accelerate" even with zero word overlap. This makes the
+local brain genuinely useful over time — the agent recalls *related* prior analyses, news,
+and ingested PDFs by concept.
+
+### Architecture
+
+```
+ingest (article / document / analysis)
+        │  chunk_text()                 query
+        ▼                                 │ embed_query()
+   embed each chunk  ──►  vector store  ◄─┘
+   (sentence-transformers)  (sqlite-vec in brain.db)
+        │                                 │ KNN (cosine) top-k
+        ▼                                 ▼
+   chunks metadata table  ────────►  recall_context(query) tool → agent
+```
+
+- **Embedding model:** `sentence-transformers` `all-MiniLM-L6-v2` (384-dim, local, free,
+  CPU-fine). Lazy-loaded; nothing leaves the machine (privacy-preserving).
+- **Vector store:** **`sqlite-vec`** `vec0` virtual table inside the existing `brain.db`
+  (no new database). **Fallback chain:** sqlite-vec → chromadb (separate dir) → disabled.
+- **Chunking:** long `clean_text` is split into ~500-token chunks with small overlap; each
+  chunk is embedded and stored with provenance `(kind, source_id, chunk_idx, text)`.
+- **Tool:** `recall_context(query, k=5)` — registered **only when semantic is enabled**;
+  article/news chunks pass through `wrap_untrusted` (documents are user-trusted).
+- **Graceful degradation (C8):** `SemanticIndex.enabled` flag; if no backend, the tool is
+  not registered and keyword search remains — the agent never breaks.
+
+### Data model (added to brain.db when enabled)
+```sql
+-- vec0 virtual table (sqlite-vec): rowid -> 384-dim embedding
+vec_chunks(embedding float[384])
+-- metadata mirror keyed by the same rowid
+chunks(id INTEGER PK, kind TEXT, source_id INTEGER, chunk_idx INTEGER,
+       text TEXT, created_at TEXT)
+```
+
+### Keeping it in sync
+`data.documents.ingest_file` and the scheduler's `daily_crawl_job` call the index when
+semantic is enabled; a one-off `index_all()` backfills existing articles/documents.
+
+### Cost & caveats (honest)
+- **Heavy install:** `sentence-transformers` pulls in **PyTorch** (~hundreds of MB) — the
+  largest dependency in the project; first model load is slow. Behind the `[semantic]`
+  extra, opt-in only.
+- **`sqlite-vec`** needs `enable_load_extension`, disabled in some Python builds → the
+  fallback handles it.
+- Keyword/FTS search already covers most cases; semantic is an enrichment, not a
+  replacement.
+
+### Testability
+`semantic_search`/indexing accept an **injectable `embed_fn`** (default = the real model)
+so unit tests exercise chunking + KNN with a tiny deterministic fake embedding (no torch).
+The real-model path is covered by a `skipif`-installed smoke test.

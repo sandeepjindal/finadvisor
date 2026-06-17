@@ -177,3 +177,50 @@ fin-advisor/
 > **Durability note:** standalone repo outside fbsource; lost once to a Sandcastle recycle
 > and rebuilt from the session transcript. Now backed up via **dotsync2** and with a
 > **GitHub remote** (`ashuaeron/Financial-Advisor`); push from a machine with open internet.
+
+---
+
+# PHASE 5 — Enhancements (post-plan)
+
+## 5A Exit Advisor + macro wired into the agent — DONE
+- `agent/tools.py`: `assess_exit` (runs Exit Advisor for a stored/inline holding) and
+  `get_macro` tools; registry gains optional `llm`; `app.py` passes it. Prompt routing hint.
+
+## 5B LLM-enriched Exit Advisor — DONE
+- `agent/exit_advisor.py`: `ExitVerdict.llm_rationale` + `enrich_exit_verdict()` (LLM
+  refines transient/structural + rationale; deterministic action kept as backstop;
+  no-op/safe if llm absent or errors). Wired into `assess_exit`.
+
+## 5C Semantic Recall (detailed, planned)
+
+Goal: meaning-based retrieval over articles/documents/analyses via local embeddings +
+vector search, behind the `[semantic]` extra with graceful fallback. See design §16.
+
+- **5C.1 Install extras** — `uv sync --extra semantic` (`sentence-transformers`,
+  `sqlite-vec`). NOTE: pulls in PyTorch (large) — opt-in only. Add a clean-import check.
+- **5C.2 Backend detection + schema** — `brain/semantic.py`: detect `sqlite-vec` (needs
+  `enable_load_extension`), else `chromadb`, else `enabled=False`. When enabled, create the
+  `vec_chunks` vec0 virtual table (dim 384) + a `chunks` metadata table. TDD: disabled-path
+  test already exists; add an enabled-path init test (skipif backend missing).
+- **5C.3 Embedding + chunking** — `embed_text(text, embed_fn=None)` (lazy
+  `SentenceTransformer('all-MiniLM-L6-v2')`; **injectable `embed_fn` for tests**);
+  `chunk_text(text, size≈500, overlap≈50)`. TDD: chunking boundaries; embed_fn injection
+  returns a vector of expected dim.
+- **5C.4 Index API** — `index_text(conn, kind, source_id, text, embed_fn=None)` chunks +
+  embeds + inserts into `vec_chunks` + `chunks`; `index_all(conn)` backfills existing
+  `articles`/`documents`. TDD with a fake deterministic `embed_fn` (no torch): index 2 docs,
+  assert rows in both tables.
+- **5C.5 Search** — `semantic_search(conn, query, k=5, embed_fn=None)` → embed query, KNN
+  (cosine) over `vec_chunks`, join `chunks`, return `[(score, kind, source_id, text)]`. TDD
+  with fake embeddings: nearest chunk to a query vector ranks first.
+- **5C.6 Tool** — `recall_context(query)` in `ToolRegistry`, **registered only when
+  `SemanticIndex.enabled`**; article/news chunks wrapped untrusted, documents trusted. TDD:
+  with a stubbed enabled index, tool returns ranked context; when disabled, tool absent.
+- **5C.7 Wire ingestion** — `data/documents.ingest_file` and `scheduler.daily_crawl_job`
+  call `index_text` when semantic enabled; optional startup `index_all` backfill. TDD:
+  ingest triggers indexing when enabled (mocked), no-op when disabled.
+- **5C.8 Smoke test (real model)** — `skipif` sentence-transformers/sqlite-vec absent:
+  index a tiny corpus, query a paraphrase, assert the semantically-related doc ranks top.
+- **Acceptance:** with `[semantic]` installed, `recall_context("data-center demand")`
+  surfaces a "GPU orders" article keyword search would miss; without it, the app runs
+  unchanged (tool simply absent).
