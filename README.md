@@ -1,7 +1,7 @@
 # Personal Financial Advisor 🤖📈
 
 A **standalone, open-source, model-independent** AI agent that acts as your personal
-financial advisor over **Discord** (or a terminal). It reasons over live market data,
+financial advisor over **Discord**, **WhatsApp**, or a terminal. It reasons over live market data,
 fundamentals, technicals, news, SEC filings, and macro factors; remembers its own analyses
 in a local "brain"; advises on entries, **exits**, and capital redeployment; and can
 proactively monitor a portfolio you tell it about.
@@ -40,7 +40,7 @@ proactively monitor a portfolio you tell it about.
 ## 🧠 How it works
 
 ```
- Discord / CLI ──► Agent Engine (tool-calling loop) ──► LLM (Groq/Ollama/…)
+ Discord / WhatsApp / CLI ──► Agent Engine (tool-calling loop) ──► LLM (Groq/Ollama/…)
                           │
         ┌─────────────────┼───────────────┬──────────────┐
         ▼                 ▼               ▼              ▼
@@ -62,7 +62,7 @@ The LLM is given **read-only tools** (`get_quote`, `get_fundamentals`, `get_tech
 ## 🚀 Quickstart (TL;DR)
 
 ```bash
-git clone https://github.com/ashuaeron/Financial-Advisor.git fin-advisor
+git clone https://github.com/ashuaeronmeta/Financial-Advisor.git fin-advisor
 cd fin-advisor
 curl -LsSf https://astral.sh/uv/install.sh | sh        # install uv (mac/linux)
 cp .env.example .env                                   # add GROQ_API_KEY (free)
@@ -85,6 +85,9 @@ uv run python scripts/chat.py                          # chat in your terminal �
      green `+` → *Create My Own*).
   3. Your **user ID**: Discord → *Settings → Advanced → Developer Mode* on, then right-click
      your name → *Copy User ID*.
+- **For WhatsApp** (optional): use the official WhatsApp Cloud API with a WhatsApp Business
+  Platform test/business number. You can chat with that bot number from WhatsApp on your
+  iPhone, but the official API does **not** automate your personal iPhone WhatsApp account.
 
 ---
 
@@ -120,6 +123,10 @@ Copy `.env.example` → `.env` and fill in. Key settings:
 | `OLLAMA_MODEL` | model when `LLM_PROVIDER=ollama` |
 | `DISCORD_TOKEN` / `DISCORD_ALLOWED_IDS` | bot token + your whitelisted user id(s) |
 | `DISCORD_DIGEST_CHANNEL_ID` | channel for the morning digest |
+| `WHATSAPP_VERIFY_TOKEN` | webhook verification token you choose in Meta Developer settings |
+| `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Cloud API credentials |
+| `WHATSAPP_ALLOWED_NUMBERS` | comma-separated phone allowlist, e.g. `+14155550123` |
+| `WHATSAPP_WEBHOOK_PATH` / `WHATSAPP_PORT` | local webhook path/port, defaults to `/webhook/whatsapp` and `8000` |
 | `MARKET_TZ` / `DIGEST_TIME` | when the daily digest runs |
 | `ARTICLE_RETENTION_DAYS` | prune crawled article text after N days |
 | `WEB_SEARCH_BACKEND` | `ddgs` (free) / `tavily` / `mcp` |
@@ -141,6 +148,17 @@ uv run python scripts/chat.py
 ```bash
 uv run python app.py        # then DM your bot or @mention it
 ```
+
+**WhatsApp bot:**
+```bash
+uv run python whatsapp_app.py
+# in another terminal, expose it with HTTPS for Meta's webhook verification:
+ngrok http 8000
+```
+Set the Meta webhook callback URL to `https://YOUR-NGROK-DOMAIN/webhook/whatsapp` and
+use the same value for `WHATSAPP_VERIFY_TOKEN` in `.env` and the Meta dashboard. Add your
+iPhone number to `WHATSAPP_ALLOWED_NUMBERS`, then send a WhatsApp message to the Meta test
+or business number.
 
 **Docker (single container; brain + documents persist on volumes):**
 ```bash
@@ -175,7 +193,7 @@ Full real-scenario walkthrough (live APIs + Discord/CLI, guardrail checks): see
 ## 🗂️ Project structure
 
 ```
-app.py · config.py · http_client.py · logging_setup.py · rules.yaml
+app.py · whatsapp_app.py · config.py · http_client.py · logging_setup.py · rules.yaml
 llm/ · data/ · brain/ · agent/ · bot/ · scheduler/ · security/ · backtest/
 knowledge/ (editable playbooks) · documents/ (your inbox) · scripts/ · tests/
 docs/plans/ (design + implementation plan) · docs/TESTING.md
@@ -198,7 +216,8 @@ audit log. Your `.env` is git-ignored — keys never reach the repo.
   filings, macro, backtest, packaging.
 - ✅ Phase 5A/B: Exit Advisor + macro wired into chat; LLM-enriched exit reasoning.
 - 🔜 Phase 5C: semantic (vector) recall over the brain (design in `docs/plans/`).
-- 🔜 WhatsApp adapter; always-on hosting recipe.
+- ✅ WhatsApp adapter via the official Cloud API webhook.
+- 🔜 Always-on hosting recipe.
 
 ---
 
