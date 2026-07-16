@@ -265,6 +265,54 @@ class ToolRegistry:
             },
             self._discover_stocks,
         )
+        self._add(
+            "get_analyst_ratings",
+            "Wall-Street analyst consensus (buy/hold/sell counts), mean price target and "
+            "implied upside for a ticker.",
+            _ticker_param("Stock ticker"),
+            self._get_analyst_ratings,
+        )
+        self._add(
+            "get_growth_estimates",
+            "Forward growth estimates (next-year EPS/revenue, long-term) for a ticker.",
+            _ticker_param("Stock ticker"),
+            self._get_growth_estimates,
+        )
+        self._add(
+            "get_catalysts",
+            "Upcoming catalysts for a ticker (next earnings date, recent filings).",
+            _ticker_param("Stock ticker"),
+            self._get_catalysts,
+        )
+        self._add(
+            "get_ownership",
+            "Ownership & insider activity for a ticker (institutional %, top holders, "
+            "insider net buying/selling).",
+            _ticker_param("Stock ticker"),
+            self._get_ownership,
+        )
+        self._add(
+            "get_financial_trends",
+            "Multi-year financial trajectory for a ticker (revenue CAGR, margin direction, "
+            "free cash flow, debt trend).",
+            _ticker_param("Stock ticker"),
+            self._get_financial_trends,
+        )
+        self._add(
+            "get_valuation_context",
+            "Valuation-in-context for a ticker (P/E, forward P/E, PEG, P/S, EV/EBITDA) with "
+            "a cheap/fair/rich read.",
+            _ticker_param("Stock ticker"),
+            self._get_valuation_context,
+        )
+        self._add(
+            "build_thesis",
+            "Full due-diligence synthesis for a ticker: fundamentals + analyst + ownership + "
+            "valuation + growth + trend → a confirmation-required verdict, a bear/base/bull "
+            "range, and track-record-calibrated confidence.",
+            _ticker_param("Stock ticker"),
+            self._build_thesis,
+        )
 
     def _add(self, name, description, parameters, fn):
         self._tools[name] = _Tool(name, description, parameters, fn)
@@ -693,3 +741,97 @@ class ToolRegistry:
 
         res = discover_stocks(parse_criteria(args["query"]), self.market)
         return ToolOutput(format_discovery(res), [])
+
+    def _get_analyst_ratings(self, args) -> ToolOutput:
+        from data.analyst import format_analyst, get_analyst_ratings
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        r = get_analyst_ratings(t, self.market)
+        if isinstance(r, Unavailable):
+            return ToolOutput(f"analyst ratings unavailable for {t}: {r.reason}", [])
+        cites = []
+        if isinstance(r.mean_target, (int, float)):
+            cites.append(Citation("mean_target", r.mean_target, "analyst", r.as_of))
+        if isinstance(r.implied_upside_pct, (int, float)):
+            cites.append(
+                Citation("implied_upside_pct", round(r.implied_upside_pct, 1), "analyst", r.as_of)
+            )
+        return ToolOutput(format_analyst(r), cites)
+
+    def _get_growth_estimates(self, args) -> ToolOutput:
+        from data.analyst import get_growth_estimates
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        g = get_growth_estimates(t)
+        if isinstance(g, Unavailable):
+            return ToolOutput(f"growth estimates unavailable for {t}: {g.reason}", [])
+        return ToolOutput(
+            f"{t} growth — next-yr EPS {g.eps_growth_next_year}, "
+            f"revenue {g.revenue_growth_next_year}, long-term {g.long_term_growth}",
+            [],
+        )
+
+    def _get_catalysts(self, args) -> ToolOutput:
+        from data.analyst import get_catalysts
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        c = get_catalysts(t)
+        if isinstance(c, Unavailable):
+            return ToolOutput(f"catalysts unavailable for {t}: {c.reason}", [])
+        forms = ", ".join(c.recent_forms) if c.recent_forms else "none noted"
+        return ToolOutput(
+            f"{t} catalysts — next earnings {c.next_earnings_date or 'unknown'}; "
+            f"recent filings: {forms}",
+            [],
+        )
+
+    def _get_ownership(self, args) -> ToolOutput:
+        from data.ownership import format_ownership, get_ownership
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        o = get_ownership(t)
+        if isinstance(o, Unavailable):
+            return ToolOutput(f"ownership unavailable for {t}: {o.reason}", [])
+        cites = []
+        if isinstance(o.institutional_pct, (int, float)):
+            cites.append(Citation("institutional_pct", o.institutional_pct, o.source, o.as_of))
+        return ToolOutput(format_ownership(o), cites)
+
+    def _get_financial_trends(self, args) -> ToolOutput:
+        from data.financials import format_financials, get_financial_trends
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        f = get_financial_trends(t)
+        if isinstance(f, Unavailable):
+            return ToolOutput(f"financial trends unavailable for {t}: {f.reason}", [])
+        cites = []
+        if isinstance(f.revenue_cagr, (int, float)):
+            cites.append(Citation("revenue_cagr", round(f.revenue_cagr, 3), f.source, f.as_of))
+        return ToolOutput(format_financials(f), cites)
+
+    def _get_valuation_context(self, args) -> ToolOutput:
+        from data.valuation import format_valuation, get_valuation_context
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        v = get_valuation_context(t)
+        if isinstance(v, Unavailable):
+            return ToolOutput(f"valuation unavailable for {t}: {v.reason}", [])
+        cites = []
+        for metric, val in (("pe", v.pe), ("forward_pe", v.forward_pe), ("peg", v.peg)):
+            if isinstance(val, (int, float)):
+                cites.append(Citation(metric, val, v.source, v.as_of))
+        return ToolOutput(format_valuation(v), cites)
+
+    def _build_thesis(self, args) -> ToolOutput:
+        from agent.thesis import build_thesis, format_thesis
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        report = build_thesis(t, self.market, self.conn, llm=self.llm)
+        return ToolOutput(format_thesis(report), report.citations)

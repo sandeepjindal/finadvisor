@@ -244,7 +244,7 @@ trend). Each step: failing test → implement → green → `git commit -m "[fin
 
 ---
 
-## 10. Work-stream E — Fundamental Depth & Analyst Intelligence (PLANNED)
+## 10. Work-stream E — Fundamental Depth & Analyst Intelligence (BUILT)
 
 The human due-diligence checklist a real advisor runs. All free via yfinance/SEC EDGAR.
 

@@ -56,6 +56,13 @@ def test_registry_has_expected_readonly_tools(tmp_path):
         "analyze_portfolio",
         "compare_tickers",
         "discover_stocks",
+        "get_analyst_ratings",
+        "get_growth_estimates",
+        "get_catalysts",
+        "get_ownership",
+        "get_financial_trends",
+        "get_valuation_context",
+        "build_thesis",
     }
 
 
