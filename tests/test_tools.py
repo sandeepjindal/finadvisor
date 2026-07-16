@@ -53,6 +53,9 @@ def test_registry_has_expected_readonly_tools(tmp_path):
         "day_trading_plan",
         "get_options_chain",
         "assess_option",
+        "analyze_portfolio",
+        "compare_tickers",
+        "discover_stocks",
     }
 
 

@@ -235,6 +235,36 @@ class ToolRegistry:
             },
             self._assess_option,
         )
+        self._add(
+            "analyze_portfolio",
+            "Portfolio-level analytics across all holdings: value, weights, concentration, "
+            "sector exposure, correlation flags, beta, and a diversification score.",
+            {"type": "object", "properties": {}},
+            self._analyze_portfolio,
+        )
+        self._add(
+            "compare_tickers",
+            "Compare 2-5 tickers side by side (price, P/E, trend, composite) and rank them.",
+            {
+                "type": "object",
+                "properties": {
+                    "tickers": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["tickers"],
+            },
+            self._compare_tickers,
+        )
+        self._add(
+            "discover_stocks",
+            "Screen a universe by a natural-language query, e.g. 'cheap profitable stocks "
+            "in an uptrend'.",
+            {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+            self._discover_stocks,
+        )
 
     def _add(self, name, description, parameters, fn):
         self._tools[name] = _Tool(name, description, parameters, fn)
@@ -635,3 +665,22 @@ class ToolRegistry:
             except Exception:  # noqa: BLE001 - enrichment best-effort
                 pass
         return ToolOutput(format_option(a), a.citations)
+
+    def _analyze_portfolio(self, args) -> ToolOutput:
+        from agent.knowledge import load_rules
+        from agent.portfolio_analytics import analyze_portfolio, format_portfolio
+
+        report = analyze_portfolio(self.conn, self.market, rules=load_rules())
+        return ToolOutput(format_portfolio(report), report.citations)
+
+    def _compare_tickers(self, args) -> ToolOutput:
+        from agent.compare import compare_tickers, format_compare
+
+        res = compare_tickers(args["tickers"], self.market)
+        return ToolOutput(format_compare(res), res.get("citations", []))
+
+    def _discover_stocks(self, args) -> ToolOutput:
+        from agent.discovery import discover_stocks, format_discovery, parse_criteria
+
+        res = discover_stocks(parse_criteria(args["query"]), self.market)
+        return ToolOutput(format_discovery(res), [])
