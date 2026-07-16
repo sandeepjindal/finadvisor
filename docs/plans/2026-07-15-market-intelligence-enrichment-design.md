@@ -298,3 +298,42 @@ management leads, leverage is warned against, disclaimers reinforced. All free v
 - Free-data greeks beyond IV/delta are approximate — flagged as uncertain.
 - Day trading & options are high-loss; the agent stays advisory-only and refuses to encourage
   reckless leverage. "Not financial advice." + a risk disclaimer on every such answer.
+
+---
+
+## 12. Work-stream G — Openness & Reach (MCP + skills + broader query tools)
+
+Make the agent handle far more query *categories*, while keeping the read-only guardrail
+model intact. Custom tools (in-guardrail) for structured queries; MCP only for open-web
+research.
+
+### G1 · Portfolio-level analytics (new query category)
+`agent/portfolio_analytics.py` + tool `analyze_portfolio()` — over stored holdings:
+concentration (max weight vs `max_position_weight`), sector exposure (via `market.get_sector`),
+pairwise correlation & portfolio beta (from `get_history`), diversification score. Today the
+agent only reasons per-ticker; this answers "is my portfolio too concentrated / correlated?"
+
+### G2 · Multi-ticker compare
+`agent/compare.py` + tool `compare_tickers([...])` — side-by-side quote / valuation / graded
+trend / analyst-ish view for 2–5 tickers, with a ranked takeaway.
+
+### G3 · Natural-language screener / discovery
+`agent/discovery.py` + tool `discover_stocks(criteria)` — screen a universe (indices +
+watchlist) by simple criteria (cheap P/E, uptrend, profitable) reusing the composite
+screener → turns lookup into *discovery* ("find me cheap profitable semis").
+
+### G4 · Editable skill playbooks (config-only, auto-exposed via `read_playbook`)
+`knowledge/`: `sector_rotation.md`, `earnings_season.md`, `macro_regime.md`,
+`position_sizing.md`, `diversification.md`, `options_strategies.md`.
+
+### G5 · MCP for open-web research (guardrailed)
+Extend the existing `WEB_SEARCH_BACKEND=mcp` hook to an **allowlisted** set of read-only MCP
+servers (web-search: Brave/Tavily/Exa; fetch/browser: Playwright for IR pages & earnings-call
+transcripts; SEC EDGAR). Rules: config allowlist only; every MCP tool passes the same
+`assert_read_only` name check + `wrap_untrusted` + SSRF policy; no write/exec/exfil server is
+ever auto-trusted. This is the one lever best served by MCP; G1–G4 stay in-house to remain
+inside the capability restriction. (Live wiring needs server config/keys — speced here,
+scaffolded in config, enabled per-deployment.)
+
+**Also still planned:** semantic (vector) recall — Phase 5C — so the agent answers from its
+accumulated brain by *meaning*, the natural complement to G1–G5.
