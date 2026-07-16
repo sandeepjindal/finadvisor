@@ -49,6 +49,10 @@ def test_registry_has_expected_readonly_tools(tmp_path):
         "get_sector_impact",
         "recall_signal_history",
         "assess_track_record",
+        "get_intraday",
+        "day_trading_plan",
+        "get_options_chain",
+        "assess_option",
     }
 
 

@@ -19,3 +19,13 @@ alert_thresholds:
 
 cooldown_hours: 24             # min hours between repeat alerts for the same trigger
 max_position_weight: 0.25      # flag a holding heavier than this share of portfolio
+
+# Day-trading guidance (Work-stream F1). Educational + conservative: risk first.
+daytrade:
+  max_risk_per_trade: 0.01     # risk at most 1% of account per trade
+  min_rr: 1.5                  # require reward:risk >= this or stand aside
+
+# Options guidance (Work-stream F2). Educational + conservative.
+options:
+  iv_rich_pctile: 0.70         # IV rank above this = premium is "rich" (favor selling)
+  iv_cheap_pctile: 0.30        # IV rank below this = premium is "cheap"

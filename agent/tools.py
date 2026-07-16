@@ -190,6 +190,51 @@ class ToolRegistry:
             },
             self._assess_track_record,
         )
+        self._add(
+            "get_intraday",
+            "Intraday snapshot for a ticker (VWAP, opening range, relative volume, "
+            "intraday RSI, gap) — for day-trading context. Data is delayed/limited.",
+            _ticker_param("Stock ticker"),
+            self._get_intraday,
+        )
+        self._add(
+            "day_trading_plan",
+            "Educational intraday plan for a ticker: momentum/breakout/mean-reversion "
+            "with a concrete entry, stop, target and risk:reward — or 'stand aside'. "
+            "Day trading is high-risk; risk-management first.",
+            _ticker_param("Stock ticker"),
+            self._suggest_daytrade,
+        )
+        self._add(
+            "get_options_chain",
+            "Option chain for a ticker (strikes, IV, volume, open interest) for the "
+            "nearest or a given expiry.",
+            {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string"},
+                    "expiry": {"type": "string", "description": "YYYY-MM-DD, optional"},
+                },
+                "required": ["ticker"],
+            },
+            self._get_options_chain,
+        )
+        self._add(
+            "assess_option",
+            "Educational assessment of a specific option (IV rank, break-even, "
+            "probability-ITM); favors conservative structures. Options can lose 100%.",
+            {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string"},
+                    "strike": {"type": "number"},
+                    "expiry": {"type": "string", "description": "YYYY-MM-DD"},
+                    "type": {"type": "string", "enum": ["call", "put"]},
+                },
+                "required": ["ticker", "strike", "expiry", "type"],
+            },
+            self._assess_option,
+        )
 
     def _add(self, name, description, parameters, fn):
         self._tools[name] = _Tool(name, description, parameters, fn)
@@ -512,3 +557,81 @@ class ToolRegistry:
         for act, b in tr["by_action"].items():
             lines.append(f"• {act}: {b['correct']}/{b['total']} ({b['accuracy']:.0%})")
         return ToolOutput("\n".join(lines), [])
+
+    def _get_intraday(self, args) -> ToolOutput:
+        from data.intraday import compute_intraday, get_intraday
+
+        df = get_intraday(args["ticker"])
+        if isinstance(df, Unavailable):
+            return ToolOutput(f"intraday unavailable for {df.ticker}: {df.reason}", [])
+        m = compute_intraday(df)
+        t = args["ticker"].upper()
+        text = (
+            f"{t} intraday: VWAP {m.vwap} RSI {m.intraday_rsi} rel-vol {m.rel_volume} "
+            f"OR[{m.opening_range_low}-{m.opening_range_high}] gap {m.gap_pct}"
+        )
+        cites = []
+        for metric, val in (
+            ("vwap", m.vwap),
+            ("intraday_rsi", m.intraday_rsi),
+            ("rel_volume", m.rel_volume),
+        ):
+            if isinstance(val, (int, float)):
+                cites.append(Citation(metric, round(val, 2), "computed", "intraday"))
+        return ToolOutput(text, cites)
+
+    def _suggest_daytrade(self, args) -> ToolOutput:
+        from agent.daytrade import (
+            enrich_daytrade,
+            format_daytrade,
+            suggest_daytrade,
+        )
+        from agent.knowledge import load_rules
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        dt = load_rules().raw.get("daytrade", {})
+        setup = suggest_daytrade(
+            t,
+            self.market,
+            max_risk_per_trade=dt.get("max_risk_per_trade", 0.01),
+            min_rr=dt.get("min_rr", 1.5),
+        )
+        if self.llm is not None:
+            try:
+                setup = enrich_daytrade(setup, "", self.llm)
+            except Exception:  # noqa: BLE001 - enrichment best-effort
+                pass
+        return ToolOutput(format_daytrade(setup), setup.citations)
+
+    def _get_options_chain(self, args) -> ToolOutput:
+        from data.options import get_option_chain
+
+        chain = get_option_chain(args["ticker"], args.get("expiry"))
+        if isinstance(chain, Unavailable):
+            return ToolOutput(f"options unavailable for {chain.ticker}: {chain.reason}", [])
+        if not chain:
+            return ToolOutput("(no options found)", [])
+        lines = [
+            f"- {o.type} {o.strike} exp {o.expiry}: IV {o.implied_volatility} "
+            f"vol {o.volume} OI {o.open_interest}"
+            for o in chain[:20]
+        ]
+        return ToolOutput("\n".join(lines), [])
+
+    def _assess_option(self, args) -> ToolOutput:
+        from agent.options_advisor import assess_option, enrich_option, format_option
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        a = assess_option(
+            t, self.market, args["strike"], args["expiry"], args["type"]
+        )
+        if isinstance(a, Unavailable):
+            return ToolOutput(f"option assessment unavailable for {t}: {a.reason}", [])
+        if self.llm is not None:
+            try:
+                a = enrich_option(a, self.llm)
+            except Exception:  # noqa: BLE001 - enrichment best-effort
+                pass
+        return ToolOutput(format_option(a), a.citations)
