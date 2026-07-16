@@ -33,6 +33,9 @@ class Config:
     digest_time: str
     web_search_backend: str
     tavily_api_key: str | None
+    mcp_search_command: str | None
+    mcp_search_url: str | None
+    mcp_search_tool: str
     log_level: str
     privacy_mode: str
 
@@ -107,6 +110,13 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     if web_search_backend == "tavily" and not tavily_api_key:
         raise ConfigError("TAVILY_API_KEY is required when WEB_SEARCH_BACKEND=tavily")
 
+    mcp_search_command = _clean(env.get("MCP_SEARCH_COMMAND"))
+    mcp_search_url = _clean(env.get("MCP_SEARCH_URL"))
+    if web_search_backend == "mcp" and not (mcp_search_command or mcp_search_url):
+        raise ConfigError(
+            "WEB_SEARCH_BACKEND=mcp requires MCP_SEARCH_COMMAND or MCP_SEARCH_URL"
+        )
+
     privacy_mode = (_clean(env.get("PRIVACY_MODE")) or "off").lower()
     if privacy_mode not in {"off", "local"}:
         raise ConfigError("PRIVACY_MODE must be 'off' or 'local'")
@@ -128,6 +138,9 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         digest_time=_clean(env.get("DIGEST_TIME")) or "08:30",
         web_search_backend=web_search_backend,
         tavily_api_key=tavily_api_key,
+        mcp_search_command=mcp_search_command,
+        mcp_search_url=mcp_search_url,
+        mcp_search_tool=_clean(env.get("MCP_SEARCH_TOOL")) or "search",
         log_level=(_clean(env.get("LOG_LEVEL")) or "INFO").upper(),
         privacy_mode=privacy_mode,
     )

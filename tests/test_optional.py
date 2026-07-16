@@ -50,7 +50,8 @@ def test_mcp_search_backend_selectable_and_guarded():
 
     s = get_search(SimpleNamespace(web_search_backend="mcp"))
     assert isinstance(s, MCPSearch)
-    with pytest.raises(NotImplementedError):
+    # No server configured -> a clear RuntimeError, never a silent/bad call.
+    with pytest.raises(RuntimeError):
         s.search("q")
 
 

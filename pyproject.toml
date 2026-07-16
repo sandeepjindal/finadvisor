@@ -33,6 +33,8 @@ macro = ["fredapi>=0.5"]
 social = ["pytrends>=4.9", "praw>=7.7"]
 finbert = ["transformers>=4.40", "torch>=2.2"]
 semantic = ["sentence-transformers>=3.0", "sqlite-vec>=0.1"]
+# Open-web research via an MCP server (Work-stream G5) — read-only, allowlisted.
+mcp = ["mcp>=1.0"]
 backtest = ["vectorbt>=0.26"]
 openbb = ["openbb>=4.3"]
 encryption = ["pysqlcipher3>=1.2"]
