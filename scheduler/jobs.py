@@ -99,7 +99,10 @@ def daily_crawl_job(conn, rss, tickers, sentiment_fn=news_sentiment) -> int:
     return added
 
 
-def build_digest_scores(market, rss, conn, rules, tickers) -> list[ScreenScore]:
+def build_digest_scores(market, rss, conn, rules, tickers, events=None) -> list[ScreenScore]:
+    from agent.screener import catalyst_score, macro_score_from_events
+
+    macro = macro_score_from_events(events)  # market-wide tone from the world scan
     scores: list[ScreenScore] = []
     for t in tickers:
         f = market.get_fundamentals(t)
@@ -122,6 +125,16 @@ def build_digest_scores(market, rss, conn, rules, tickers) -> list[ScreenScore]:
                 )
         except Exception as e:  # noqa: BLE001
             log.warning("sentiment fetch failed for %s: %s", t, e)
+        # Catalyst from active confirmed themes hitting this ticker's sector (only when the
+        # world scan supplied events; sector lookup guarded for markets without get_sector).
+        catalyst = 0.5
+        if events:
+            sector = None
+            try:
+                sector = market.get_sector(t)
+            except Exception:  # noqa: BLE001
+                sector = None
+            catalyst = catalyst_score(sector, events)
         scores.append(
             score_ticker(
                 t,
@@ -131,6 +144,8 @@ def build_digest_scores(market, rss, conn, rules, tickers) -> list[ScreenScore]:
                 profit_margin=margin,
                 sentiment=sent,
                 rules=rules,
+                macro=macro,
+                catalyst=catalyst,
                 trend_strength=trend_strength,
                 macd_cross=macd_cross,
                 cross_signal=cross_signal,

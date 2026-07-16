@@ -428,7 +428,16 @@ class ToolRegistry:
                 f"No holding for {t}. Provide shares & avg_cost, or add via /portfolio.",
                 [],
             )
-        verdict = evaluate_exit(holding, self.market, self.conn, load_rules())
+        social = None
+        try:  # social/attention risk feeds the Exit Advisor's caution (Work-stream C)
+            from data.social import combined_social
+
+            social = combined_social(t)
+        except Exception:  # noqa: BLE001 - best-effort
+            social = None
+        verdict = evaluate_exit(
+            holding, self.market, self.conn, load_rules(), social=social
+        )
         if self.llm is not None:
             context = ""
             try:

@@ -105,3 +105,37 @@ def score_ticker(
 
 def rank_universe(scores: list[ScreenScore]) -> list[ScreenScore]:
     return sorted(scores, key=lambda s: s.composite, reverse=True)
+
+
+def macro_score_from_events(events) -> float:
+    """Market-wide macro tone (0..1, 0.5 neutral) from confirmed geopolitical/macro impacts
+    surfaced by the world scan. Net-positive confirmed impacts lift it; net-negative lower
+    it. Replaces the old hardcoded 0.5 macro placebo (design §4/B6)."""
+    if not events:
+        return 0.5
+    up = down = 0
+    for e in events:
+        for i in getattr(e, "impacts", []) or []:
+            if not i.get("confirmed"):
+                continue
+            if i.get("direction") == "up":
+                up += 1
+            elif i.get("direction") == "down":
+                down += 1
+    return _clamp(0.5 + 0.05 * (up - down))
+
+
+def catalyst_score(sector, events, attention_spike: bool = False) -> float:
+    """Ticker catalyst (0..1, 0.5 neutral): active CONFIRMED themes hitting the ticker's
+    sector push it up/down; a retail-attention spike is treated as a RISK (small penalty),
+    never a buy catalyst. Replaces the old hardcoded 0.5 catalyst placebo."""
+    score = 0.5
+    if sector:
+        for e in events or []:
+            for i in getattr(e, "impacts", []) or []:
+                same = str(i.get("sector", "")).lower() == str(sector).lower()
+                if same and i.get("confirmed"):
+                    score += 0.15 if i.get("direction") == "up" else -0.15
+    if attention_spike:
+        score -= 0.1
+    return _clamp(score)

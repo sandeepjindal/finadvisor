@@ -30,7 +30,7 @@ class ExitVerdict:
     llm_rationale: str | None = None
 
 
-def evaluate_exit(holding, market, conn, rules) -> ExitVerdict:
+def evaluate_exit(holding, market, conn, rules, social=None) -> ExitVerdict:
     ticker = holding.ticker
     quote = market.get_quote(ticker)
     if isinstance(quote, Unavailable):
@@ -120,6 +120,15 @@ def evaluate_exit(holding, market, conn, rules) -> ExitVerdict:
         reasons.append(f"trend strength strongly negative ({strength:+.2f})")
         score += 1
 
+    # Social/attention risk (Work-stream C): a hype/crowding spike is a RISK, not a buy —
+    # it tightens the stop (below) and is surfaced as caution; it never flips the
+    # deterministic action on its own.
+    hype_risk = bool(social and social.get("risk_flag"))
+    if hype_risk:
+        reasons.append(
+            "retail hype/crowding risk (attention spike + extreme sentiment) — tighter stop"
+        )
+
     # Thesis check from saved analyses (informational).
     past = recall_analyses(conn, ticker, limit=1)
     if past:
@@ -146,18 +155,22 @@ def evaluate_exit(holding, market, conn, rules) -> ExitVerdict:
         classification = "transient"
 
     # ATR-sized stop when volatility is available; flat % fallback otherwise.
+    # A hype/crowding risk tightens the stop (×0.7) to protect against a fast reversal.
+    tighten = 0.7 if hype_risk else 1.0
     atr = long_tech.atr if long_tech else None
     if isinstance(atr, (int, float)) and atr > 0:
-        stop = price - atr_mult * atr
+        eff_mult = atr_mult * tighten
+        stop = price - eff_mult * atr
         citations.append(Citation("atr", round(atr, 2), "computed", "now"))
         suggested_rule = (
             f"set an ATR-based trailing stop at {stop:.2f} "
-            f"({atr_mult:.0f}×ATR {atr:.2f})"
+            f"({eff_mult:.1f}×ATR {atr:.2f})"
         )
     else:
+        eff_pct = trailing_pct * tighten
         suggested_rule = (
-            f"set a trailing stop at {price * (1 - trailing_pct / 100):.2f} "
-            f"(-{trailing_pct:.0f}%)"
+            f"set a trailing stop at {price * (1 - eff_pct / 100):.2f} "
+            f"(-{eff_pct:.0f}%)"
         )
     redeploy = suggest_redeploy() if action in ("TRIM", "SELL") else []
 
