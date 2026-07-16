@@ -55,12 +55,64 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _default_fetch(url: str) -> dict | list:
-    """Default JSON fetch: prefer the shared get_json, else json.loads(get_text)."""
+# StockTwits/Reddit bot-block the generic default UA, so use realistic ones. Reddit's public
+# .json wants a unique descriptive UA (a browser UA there tends to get 429'd).
+_BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+)
+_REDDIT_UA = "fin-advisor/1.0 (personal financial advisor; +https://github.com/)"
+
+
+def _json_fetch(url: str, *, user_agent: str = _BROWSER_UA) -> dict | list:
+    """JSON fetch with a realistic User-Agent + JSON Accept; falls back to text+parse.
+    Raises on a non-JSON body so the caller degrades to Unavailable rather than mis-parsing."""
+    headers = {"Accept": "application/json"}
     try:
-        return get_json(url)
-    except Exception:  # noqa: BLE001 - fall back to text+parse
-        return json.loads(get_text(url))
+        return get_json(url, user_agent=user_agent, headers=headers)
+    except Exception:  # noqa: BLE001 - fall back to text+parse (may itself raise -> Unavailable)
+        return json.loads(get_text(url, user_agent=user_agent, headers=headers))
+
+
+def _default_fetch(url: str) -> dict | list:
+    return _json_fetch(url)
+
+
+def _reddit_fetch(url: str) -> dict | list:
+    return _json_fetch(url, user_agent=_REDDIT_UA)
+
+
+def _reddit_creds():
+    """Free Reddit 'script' app credentials from env (trusted config), or None."""
+    import os
+
+    cid = os.environ.get("REDDIT_CLIENT_ID")
+    csec = os.environ.get("REDDIT_CLIENT_SECRET")
+    return (cid, csec) if cid and csec else None
+
+
+def _reddit_praw_titles(ticker: str, subreddits, limit: int = 50) -> list[str]:
+    """Read-only Reddit search via OAuth (praw). Requires the [social] extra + creds."""
+    try:
+        import praw
+    except ImportError as e:  # pragma: no cover - optional dep
+        raise RuntimeError("praw not installed; run: uv sync --extra social") from e
+    creds = _reddit_creds()
+    if not creds:  # pragma: no cover - guarded by caller
+        raise RuntimeError("Reddit OAuth creds missing (REDDIT_CLIENT_ID/SECRET)")
+    reddit = praw.Reddit(
+        client_id=creds[0],
+        client_secret=creds[1],
+        user_agent=_REDDIT_UA,
+        check_for_async=False,
+    )
+    reddit.read_only = True
+    titles: list[str] = []
+    for sub in subreddits:  # pragma: no cover - needs live OAuth
+        for post in reddit.subreddit(sub).search(ticker, sort="new", limit=limit):
+            if getattr(post, "title", ""):
+                titles.append(post.title)
+    return titles
 
 
 def stocktwits_sentiment(ticker: str, *, fetch=None) -> SocialSignal | Unavailable:
@@ -112,29 +164,36 @@ def reddit_mentions(
 ) -> SocialSignal | Unavailable:
     """Mention volume + VADER sentiment across subreddit search results.
 
-    Uses Reddit's public ``.json`` search endpoint per subreddit. Counts posts
-    (message_volume) and runs ``data.news.news_sentiment`` over the concatenated
-    titles. ``bullish_ratio`` is None here. ``fetch(url) -> dict`` is injectable.
-    Degrades to ``Unavailable`` on error.
+    Counts posts (message_volume) and runs ``data.news.news_sentiment`` over the concatenated
+    titles. ``bullish_ratio`` is None here. Degrades to ``Unavailable`` on error.
+
+    Reddit blocks unauthenticated ``.json`` access (HTTP 403), so when no ``fetch`` is
+    injected we prefer the **OAuth path via praw** using REDDIT_CLIENT_ID/REDDIT_CLIENT_SECRET
+    (a free Reddit "script" app). Without those creds it falls back to the public ``.json``
+    endpoint, which will usually 403 and degrade to ``Unavailable``. ``fetch(url) -> dict`` is
+    injectable for offline tests (bypasses both paths).
     """
     try:
         t = validate_ticker(ticker)
     except ValueError as e:
         return Unavailable(field="social", ticker=ticker, reason=str(e))
-    fetch = fetch or _default_fetch
     try:
-        titles: list[str] = []
-        for sub in subreddits:
-            url = (
-                f"https://www.reddit.com/r/{sub}/search.json?"
-                f"q={t}&restrict_sr=1&sort=new&limit=50"
-            )
-            data = fetch(url)
-            children = ((data or {}).get("data") or {}).get("children") or []
-            for c in children:
-                title = ((c or {}).get("data") or {}).get("title") or ""
-                if title:
-                    titles.append(title)
+        if fetch is None and _reddit_creds():
+            titles = _reddit_praw_titles(t, subreddits)
+        else:
+            fetch = fetch or _reddit_fetch
+            titles = []
+            for sub in subreddits:
+                url = (
+                    f"https://www.reddit.com/r/{sub}/search.json?"
+                    f"q={t}&restrict_sr=1&sort=new&limit=50"
+                )
+                data = fetch(url)
+                children = ((data or {}).get("data") or {}).get("children") or []
+                for c in children:
+                    title = ((c or {}).get("data") or {}).get("title") or ""
+                    if title:
+                        titles.append(title)
         sentiment = news_sentiment(" ".join(titles)) if titles else None
         return SocialSignal(
             ticker=t,
