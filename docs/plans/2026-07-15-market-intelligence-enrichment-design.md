@@ -241,4 +241,60 @@ trend). Each step: failing test → implement → green → `git commit -m "[fin
   each server — out of scope; StockTwits/Reddit cover the public retail-chatter signal.
 - Event→sector mapping is a **heuristic** confirmed by price; it surfaces *hypotheses with
   evidence*, not predictions. The mandatory "Not financial advice." disclaimer stays.
-```
+
+---
+
+## 10. Work-stream E — Fundamental Depth & Analyst Intelligence (PLANNED)
+
+The human due-diligence checklist a real advisor runs. All free via yfinance/SEC EDGAR.
+
+- `get_financial_trends(ticker)` — multi-year revenue / EPS / margin / FCF / debt trajectory
+  (the *fundamental* analog to A's technical trend).
+- `get_analyst_ratings(ticker)` — consensus buy/hold/sell + mean price target → implied upside.
+- `get_ownership(ticker)` — institutional %, top holders, **insider buying/selling**.
+- `get_growth_estimates(ticker)` — forward EPS/revenue growth (the "5-yr roadmap" proxy).
+- `get_catalysts(ticker)` — next earnings date + recent 8-Ks + product news.
+- `get_valuation_context(ticker)` — PEG, forward P/E, P/S vs sector & own history.
+- **Synthesis:** `build_thesis(ticker)` runs the full checklist, scores each pillar, requires
+  **cross-pillar confirmation** (confident BUY/SELL only when pillars agree; conflict →
+  HOLD/WATCH with "mixed signals"), attaches the track-record confidence (D), and returns a
+  cited verdict + a **probabilistic bear/base/bull range** (never a point forecast).
+
+**Decisions (locked by review):** verdict style = *confirmation-required*; prediction =
+*probabilistic range + calibrated confidence*.
+
+---
+
+## 11. Work-stream F — Day-Trading & Options Guidance (BUILDING)
+
+Higher-risk capabilities, built with an **educational + conservative** posture: risk
+management leads, leverage is warned against, disclaimers reinforced. All free via yfinance
+(intraday bars + full option chains).
+
+### F1 · Day-trading guidance
+- `data/intraday.py` — 1m/5m/15m bars (yfinance intraday; injectable for tests) + VWAP,
+  opening-range, relative volume, intraday RSI, gap analysis.
+- `agent/daytrade.py` — deterministic setup detection (momentum / breakout / mean-reversion)
+  that ALWAYS returns a concrete **entry, stop, target, and risk:reward**, never a bare tip.
+  Position-sizing + max-risk-per-trade read from `rules.yaml`. Optional LLM enrichment.
+- Playbooks: `knowledge/day_trading.md`, `knowledge/risk_management.md`.
+
+### F2 · Options / calls
+- `data/options.py` — option chain (strikes, bid/ask, IV, volume, open interest), **IV
+  rank/percentile**, break-even, **probability-ITM** (from delta/IV), unusual-activity
+  (volume vs OI). Injectable for offline tests.
+- `agent/options_advisor.py` — educational-first: explains whether IV is rich/cheap, break-even
+  and POP, and favours conservative structures (covered calls, cash-secured puts) before naked
+  long calls; hard risk warning on leverage/100%-loss. Optional LLM enrichment.
+- Playbook: `knowledge/options_basics.md`.
+
+### New tools (`agent/tools.py`)
+`get_intraday(ticker)`, `suggest_daytrade(ticker)`, `get_options_chain(ticker)`,
+`assess_option(ticker, strike, expiry, type)` — all read-only, citation-emitting.
+
+### Honest limits
+- Intraday history via yfinance is limited (1m ≈ last 7 days) and delayed — fine for guidance,
+  not HFT; disclosed to the user.
+- Free-data greeks beyond IV/delta are approximate — flagged as uncertain.
+- Day trading & options are high-loss; the agent stays advisory-only and refuses to encourage
+  reckless leverage. "Not financial advice." + a risk disclaimer on every such answer.
