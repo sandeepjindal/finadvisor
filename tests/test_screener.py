@@ -50,3 +50,50 @@ def test_composite_in_range():
         rules=rules,
     )
     assert 0.0 <= s.composite <= 1.0
+
+
+# --- Work-stream A: graded technical score ---------------------------------------
+
+
+def _tech(rules, **kw):
+    base = dict(
+        trend="sideways",
+        rsi=None,
+        pe=None,
+        profit_margin=None,
+        sentiment=None,
+        rules=rules,
+    )
+    base.update(kw)
+    return score_ticker("T", **base).breakdown["technical"]
+
+
+def test_technical_score_monotonic_in_strength():
+    rules = load_rules()
+    weak = _tech(rules, trend_strength=-0.9)
+    mid = _tech(rules, trend_strength=0.0)
+    strong = _tech(rules, trend_strength=0.9)
+    assert weak < mid < strong
+
+
+def test_bullish_macd_and_golden_cross_add_bonus():
+    rules = load_rules()
+    plain = _tech(rules, trend_strength=0.2)
+    boosted = _tech(rules, trend_strength=0.2, macd_cross="bullish", cross_signal="golden")
+    bearish = _tech(rules, trend_strength=0.2, macd_cross="bearish", cross_signal="death")
+    assert boosted > plain > bearish
+
+
+def test_technical_score_falls_back_to_buckets_without_strength():
+    rules = load_rules()
+    up = _tech(rules, trend="up")
+    down = _tech(rules, trend="down")
+    assert up > down  # old {up:0.8, down:0.2} behavior preserved
+
+
+def test_overbought_penalizes_graded_score():
+    rules = load_rules()
+    overbought = rules.alert_thresholds.get("rsi_overbought", 70)
+    calm = _tech(rules, trend_strength=0.8, rsi=50)
+    hot = _tech(rules, trend_strength=0.8, rsi=overbought + 10)
+    assert hot < calm

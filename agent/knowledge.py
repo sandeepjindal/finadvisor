@@ -13,8 +13,10 @@ from config import ConfigError
 ROOT = Path(__file__).resolve().parents[1]
 KNOWLEDGE_DIR = ROOT / "knowledge"
 RULES_PATH = ROOT / "rules.yaml"
+SECTOR_MAP_PATH = KNOWLEDGE_DIR / "sector_map.yaml"
 
 REQUIRED_FAMILIES = {"fundamental", "technical", "sentiment", "macro", "catalyst"}
+_VALID_DIRECTIONS = {"up", "down"}
 
 
 @dataclass(frozen=True)
@@ -78,3 +80,50 @@ def principles_summary(max_chars: int = 1500) -> str:
         except ValueError:
             pass
     return "\n\n".join(parts)[:max_chars]
+
+
+def load_sector_map(path: str | Path | None = None) -> dict:
+    """Load & validate the editable theme->sector map (knowledge/sector_map.yaml).
+
+    Each theme must have a non-empty ``keywords`` list and an ``impacts`` mapping of
+    sector -> {direction: up|down, etf: <TICKER>, why?: <str>}. Returns the ``themes``
+    mapping. Raises ``ConfigError`` on any schema violation.
+    """
+    p = Path(path) if path else SECTOR_MAP_PATH
+    try:
+        data = yaml.safe_load(p.read_text()) or {}
+    except FileNotFoundError as e:
+        raise ConfigError(f"sector map file not found: {p}") from e
+    if not isinstance(data, dict):
+        raise ConfigError("sector_map.yaml must be a mapping")
+
+    themes = data.get("themes")
+    if not isinstance(themes, dict) or not themes:
+        raise ConfigError("sector_map.yaml must have a non-empty 'themes' mapping")
+
+    for theme, spec in themes.items():
+        if not isinstance(spec, dict):
+            raise ConfigError(f"theme {theme!r} must be a mapping")
+        keywords = spec.get("keywords")
+        if not isinstance(keywords, list) or not keywords:
+            raise ConfigError(f"theme {theme!r} must have a non-empty 'keywords' list")
+        impacts = spec.get("impacts")
+        if not isinstance(impacts, dict) or not impacts:
+            raise ConfigError(f"theme {theme!r} must have a non-empty 'impacts' mapping")
+        for sector, impact in impacts.items():
+            if not isinstance(impact, dict):
+                raise ConfigError(
+                    f"impact for {theme!r}/{sector!r} must be a mapping"
+                )
+            direction = impact.get("direction")
+            if direction not in _VALID_DIRECTIONS:
+                raise ConfigError(
+                    f"impact {theme!r}/{sector!r} direction must be one of "
+                    f"{sorted(_VALID_DIRECTIONS)}"
+                )
+            if not impact.get("etf"):
+                raise ConfigError(
+                    f"impact {theme!r}/{sector!r} must specify an 'etf'"
+                )
+
+    return themes

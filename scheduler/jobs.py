@@ -105,9 +105,12 @@ def build_digest_scores(market, rss, conn, rules, tickers) -> list[ScreenScore]:
         f = market.get_fundamentals(t)
         h = market.get_history(t)
         trend, rsi = "sideways", None
+        trend_strength = macd_cross = cross_signal = None
         if not isinstance(h, Unavailable):
             tech = compute_indicators(h)
             trend, rsi = tech.trend, tech.rsi
+            trend_strength = tech.trend_strength
+            macd_cross, cross_signal = tech.macd_cross, tech.cross_signal
         pe = None if isinstance(f, Unavailable) else f.pe
         margin = None if isinstance(f, Unavailable) else f.profit_margin
         sent = None
@@ -128,16 +131,41 @@ def build_digest_scores(market, rss, conn, rules, tickers) -> list[ScreenScore]:
                 profit_margin=margin,
                 sentiment=sent,
                 rules=rules,
+                trend_strength=trend_strength,
+                macd_cross=macd_cross,
+                cross_signal=cross_signal,
             )
         )
     return scores
 
 
-def format_digest(scores: list[ScreenScore], limit: int = 5) -> str:
+def format_digest(
+    scores: list[ScreenScore], limit: int = 5, backdrop: list | None = None
+) -> str:
+    """Format the morning push: an optional macro backdrop (trending themes + sectors from
+    world_scan_job) followed by the top ranked ideas, each with its strongest driver."""
+    lines = ["📈 **Morning digest**"]
+
+    # Macro backdrop — what's moving markets today and which sectors it favours.
+    active = [e for e in (backdrop or []) if getattr(e, "impacts", None)]
+    if active:
+        lines.append("\n🌍 **Market backdrop**")
+        for e in active[:3]:
+            ups = [i["sector"] for i in e.impacts if i.get("direction") == "up"]
+            downs = [i["sector"] for i in e.impacts if i.get("direction") == "down"]
+            bits = []
+            if ups:
+                bits.append("↑ " + ", ".join(ups))
+            if downs:
+                bits.append("↓ " + ", ".join(downs))
+            lines.append(f"• {e.theme.replace('_', ' ')}: {' | '.join(bits)}")
+
+    lines.append("\n💡 **Top ideas** (screened by trend + fundamentals + sentiment)")
     ranked = rank_universe(scores)[:limit]
-    lines = ["📈 **Morning digest — top ideas**"]
     for s in ranked:
-        lines.append(f"• {s.ticker} — score {s.composite:.2f}")
+        driver = max(s.breakdown, key=s.breakdown.get) if s.breakdown else None
+        why = f" — strongest: {driver}" if driver else ""
+        lines.append(f"• {s.ticker} — score {s.composite:.2f}{why}")
     if not ranked:
         lines.append("(no candidates)")
     lines.append("\n⚠️ Not financial advice.")
@@ -157,12 +185,57 @@ def monitor_holdings_job(
         except Exception as e:  # noqa: BLE001
             log.warning("exit eval failed for %s: %s", h.ticker, e)
             continue
+        # Learning loop (Work-stream D): score matured past calls against fresh price so
+        # the track record accrues over time. Best-effort — never blocks alerting.
+        try:
+            from brain.signals import evaluate_decisions
+
+            q = market.get_quote(h.ticker)
+            if not isinstance(q, Unavailable) and getattr(q, "price", None) is not None:
+                evaluate_decisions(conn, h.ticker, q.price)
+        except Exception as e:  # noqa: BLE001
+            log.warning("decision-outcome eval failed for %s: %s", h.ticker, e)
         if verdict.action in ("TRIM", "SELL"):
             if not was_alerted(conn, h.ticker, verdict.action, cooldown):
                 msg = format_exit_verdict(verdict)
                 record_alert(conn, h.ticker, verdict.action, msg[:500])
                 alerts.append(msg)
     return alerts
+
+
+def world_scan_job(market, *, news_fn=None, sector_map=None, queries=None) -> list:
+    """Sweep world/macro news for market-moving themes and confirm each against the sector
+    ETF's real price move. Returns the confirmed DetectedEvents (the macro backdrop the
+    digest/monitoring can reference). Pure + injectable for offline tests. Work-stream B."""
+    from agent.events import confirm_with_price, detect_events
+    from data.worldnews import google_news
+
+    if news_fn is None:
+        news_fn = lambda q: google_news(q, limit=8)  # noqa: E731
+    if queries is None:
+        queries = (
+            "geopolitical conflict markets",
+            "oil supply prices",
+            "federal reserve interest rates inflation",
+            "semiconductor export restrictions",
+        )
+    if sector_map is None:
+        from agent.knowledge import load_sector_map
+
+        try:
+            sector_map = load_sector_map()
+        except Exception as e:  # noqa: BLE001
+            log.warning("sector map load failed: %s", e)
+            return []
+
+    headlines: list = []
+    for qy in queries:
+        try:
+            headlines.extend(news_fn(qy))
+        except Exception as e:  # noqa: BLE001
+            log.warning("world news fetch failed for %r: %s", qy, e)
+    events = detect_events(headlines, sector_map)
+    return [confirm_with_price(e, market) for e in events]
 
 
 def maintenance_job(conn, retention_days: int) -> dict:

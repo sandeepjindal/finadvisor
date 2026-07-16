@@ -44,6 +44,11 @@ def test_registry_has_expected_readonly_tools(tmp_path):
         "list_documents",
         "read_document",
         "search_documents",
+        "get_social_signal",
+        "scan_market_context",
+        "get_sector_impact",
+        "recall_signal_history",
+        "assess_track_record",
     }
 
 

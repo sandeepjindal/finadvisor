@@ -153,6 +153,43 @@ class ToolRegistry:
             },
             self._search_documents,
         )
+        self._add(
+            "get_social_signal",
+            "Social & search-attention read for a ticker (StockTwits bullish/bearish, "
+            "Reddit chatter, Google Trends). An attention SPIKE is a RISK flag, not a buy.",
+            _ticker_param("Stock ticker"),
+            self._get_social_signal,
+        )
+        self._add(
+            "scan_market_context",
+            "Scan world/geopolitical news for market-moving themes and the sectors they "
+            "help/hurt (confirmed against each sector ETF's real price move).",
+            {"type": "object", "properties": {}},
+            self._scan_market_context,
+        )
+        self._add(
+            "get_sector_impact",
+            "For a ticker: its sector and any active macro/geopolitical theme hitting that "
+            "sector, with the sector ETF's confirming price move.",
+            _ticker_param("Stock ticker"),
+            self._get_sector_impact,
+        )
+        self._add(
+            "recall_signal_history",
+            "Recall the enriched signal snapshots this agent saved for a ticker over time.",
+            _ticker_param("Stock ticker"),
+            self._recall_signal_history,
+        )
+        self._add(
+            "assess_track_record",
+            "This agent's historical hit-rate on past calls (overall or for a ticker) — "
+            "how often prior HOLD/SELL/TRIM/BUY calls were borne out by price.",
+            {
+                "type": "object",
+                "properties": {"ticker": {"type": "string"}},
+            },
+            self._assess_track_record,
+        )
 
     def _add(self, name, description, parameters, fn):
         self._tools[name] = _Tool(name, description, parameters, fn)
@@ -354,3 +391,124 @@ class ToolRegistry:
         return ToolOutput(
             "\n".join(f"- {d.title}: {d.clean_text[:200]}" for d in res), []
         )
+
+    def _get_social_signal(self, args) -> ToolOutput:
+        from data.social import combined_social
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        s = combined_social(t)
+        parts = [f"{t} social:"]
+        if s.get("bullish_ratio") is not None:
+            parts.append(f"StockTwits bullish {s['bullish_ratio']:.0%}")
+        if s.get("sentiment") is not None:
+            parts.append(f"Reddit sentiment {s['sentiment']:+.2f}")
+        if s.get("attention") is not None:
+            parts.append(f"search attention {s['attention']:.0f}")
+        if s.get("attention_spike"):
+            parts.append("ATTENTION SPIKE")
+        if s.get("risk_flag"):
+            parts.append("⚠️ hype/crowding RISK")
+        text = ", ".join(parts) + f"\n{s.get('note', '')}"
+        return ToolOutput(text, s.get("citations", []))
+
+    # Macro queries the world-scan sweeps for market-moving themes.
+    _MACRO_QUERIES = (
+        "geopolitical conflict markets",
+        "oil supply prices",
+        "federal reserve interest rates inflation",
+        "semiconductor export restrictions",
+    )
+
+    def _active_events(self) -> list:
+        """Detect + price-confirm active themes from world news. Shared by two tools."""
+        from agent.events import confirm_with_price, detect_events
+        from agent.knowledge import load_sector_map
+        from data.worldnews import google_news
+
+        headlines: list = []
+        for q in self._MACRO_QUERIES:
+            try:
+                headlines.extend(google_news(q, limit=8))
+            except Exception:  # noqa: BLE001 - best-effort
+                continue
+        try:
+            sector_map = load_sector_map()
+        except Exception:  # noqa: BLE001
+            return []
+        events = detect_events(headlines, sector_map)
+        return [confirm_with_price(e, self.market) for e in events]
+
+    def _scan_market_context(self, args) -> ToolOutput:
+        events = self._active_events()
+        if not events:
+            return ToolOutput("(no active market-moving themes detected)", [])
+        lines: list[str] = []
+        cites: list[Citation] = []
+        for e in events:
+            lines.append(f"• **{e.theme}** ({e.headline_count} headlines, conf {e.confidence})")
+            cites.append(Citation(f"theme:{e.theme}", e.headline_count, "worldnews", "now"))
+            for im in e.impacts:
+                mark = {True: "✓confirmed", False: "✗not-confirmed", None: "?unconfirmed"}[
+                    im.get("confirmed")
+                ]
+                lines.append(
+                    f"   - {im['sector']} {im['direction']} ({im['etf']}, {mark})"
+                    + (f" — {im['why']}" if im.get("why") else "")
+                )
+        return ToolOutput(wrap_untrusted("\n".join(lines)), cites)
+
+    def _get_sector_impact(self, args) -> ToolOutput:
+        from agent.events import sector_for_ticker
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        sector = sector_for_ticker(t, self.market)
+        if not sector:
+            return ToolOutput(f"sector unknown for {t}; no sector-impact read", [])
+        hits: list[str] = []
+        for e in self._active_events():
+            for im in e.impacts:
+                if str(im.get("sector", "")).lower() == sector.lower():
+                    mark = {True: "confirmed", False: "not confirmed", None: "unconfirmed"}[
+                        im.get("confirmed")
+                    ]
+                    hits.append(
+                        f"• {e.theme}: {sector} expected {im['direction']} "
+                        f"({im['etf']} move {mark})"
+                    )
+        if not hits:
+            return ToolOutput(f"{t} sector={sector}: no active theme currently impacts it", [])
+        return ToolOutput(f"{t} sector={sector}:\n" + "\n".join(hits), [])
+
+    def _recall_signal_history(self, args) -> ToolOutput:
+        from brain.signals import recall_signal_history
+        from security.guards import validate_ticker
+
+        t = validate_ticker(args["ticker"])
+        snaps = recall_signal_history(self.conn, t, limit=5)
+        if not snaps:
+            return ToolOutput(f"no saved signal history for {t}", [])
+        lines = [f"- {s.created_at[:10]} @ {s.price}: {s.signals}" for s in snaps]
+        return ToolOutput(f"Signal history for {t}:\n" + "\n".join(lines), [])
+
+    def _assess_track_record(self, args) -> ToolOutput:
+        from brain.signals import track_record
+
+        ticker = args.get("ticker")
+        if ticker:
+            from security.guards import validate_ticker
+
+            ticker = validate_ticker(ticker)
+        tr = track_record(self.conn, ticker)
+        if not tr["total"]:
+            scope = ticker or "overall"
+            return ToolOutput(f"no scored past decisions yet ({scope})", [])
+        scope = ticker or "overall"
+        lines = [
+            f"Track record ({scope}): {tr['correct']}/{tr['total']} correct "
+            f"= {tr['accuracy']:.0%}"
+        ]
+        for act, b in tr["by_action"].items():
+            lines.append(f"• {act}: {b['correct']}/{b['total']} ({b['accuracy']:.0%})")
+        return ToolOutput("\n".join(lines), [])

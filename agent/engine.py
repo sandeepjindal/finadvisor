@@ -15,12 +15,41 @@ from dataclasses import dataclass, field
 from agent.grounding import validate_grounding
 from agent.knowledge import principles_summary
 from agent.prompts import SYSTEM_PROMPT
-from brain.analyses import save_analysis
+from brain.analyses import recall_analyses, save_analysis
 from brain.audit import log_audit
 from llm.base import Message
 from logging_setup import get_logger
 
 _log = get_logger("engine")
+
+
+def _memory_context(conn, ticker: str | None) -> str | None:
+    """Build a 'what I already know / how right I've been' block so the agent LEARNS from
+    its own history. Best-effort: any failure returns None and the answer proceeds."""
+    if not ticker:
+        return None
+    try:
+        prior = recall_analyses(conn, ticker.upper(), limit=3)
+    except Exception:  # noqa: BLE001 - memory is best-effort
+        return None
+    lines: list[str] = []
+    if prior:
+        lines.append(f"Your prior analyses of {ticker.upper()} (most recent first):")
+        for a in prior:
+            px = f" @ {a.price_at_time}" if a.price_at_time is not None else ""
+            lines.append(f"- {a.created_at[:10]}: {a.verdict}{px} — {a.reasoning[:160]}")
+    try:
+        from brain.signals import track_record
+
+        tr = track_record(conn, ticker.upper())
+        if tr.get("total"):
+            lines.append(
+                f"Your track record on {ticker.upper()}: {tr['correct']}/{tr['total']} "
+                f"past calls correct ({tr['accuracy']:.0%}). Calibrate confidence accordingly."
+            )
+    except Exception:  # noqa: BLE001
+        pass
+    return "\n".join(lines) if lines else None
 
 
 def _audit(conn, action, tool, args, summary):
@@ -65,8 +94,12 @@ def answer(
     max_iters: int = 6,
     ticker: str | None = None,
 ) -> AgentAnswer:
+    system = SYSTEM_PROMPT + "\n\n" + principles_summary()
+    memory = _memory_context(conn, ticker)
+    if memory:
+        system += "\n\n## Your memory (learn from it)\n" + memory
     messages = [
-        Message("system", SYSTEM_PROMPT + "\n\n" + principles_summary()),
+        Message("system", system),
         Message("user", question),
     ]
     citations: list = []
@@ -108,17 +141,30 @@ def answer(
     verdict = _detect_verdict(text)
     confidence = None
 
+    # The enriched signal blob = every cited figure the agent gathered (technical trend,
+    # events, social, macro, fundamentals). Price is pulled out so the learning loop can
+    # later score this decision against realised price.
+    signals_blob = {c.metric: c.value for c in citations}
+    price = signals_blob.get("price")
+    tkr = (ticker or "?").upper()
+
     save_analysis(
         conn,
-        (ticker or "?").upper(),
+        tkr,
         question,
         verdict,
         text,
         confidence,
-        {"grounded": grounding.ok, "unsupported": grounding.unsupported},
-        None,
+        {**signals_blob, "grounded": grounding.ok, "unsupported": grounding.unsupported},
+        price,
     )
-    _audit(conn, "recommendation", (ticker or "?").upper(), question[:200], verdict)
+    try:  # historical brain (Work-stream D) — never break the answer
+        from brain.signals import save_signal_snapshot
+
+        save_signal_snapshot(conn, tkr, signals_blob, price, source="agent")
+    except Exception as e:  # noqa: BLE001
+        _log.warning("signal snapshot save failed: %s", e)
+    _audit(conn, "recommendation", tkr, question[:200], verdict)
     return AgentAnswer(
         text=text,
         verdict=verdict,

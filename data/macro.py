@@ -11,6 +11,9 @@ _DEFAULT_SERIES = {
     "cpi": "CPIAUCSL",
     "unemployment": "UNRATE",
     "gdp": "GDP",
+    # Work-stream B: macro backdrop for geopolitical/rate signals.
+    "crude_oil": "DCOILWTICO",  # WTI crude spot ($/bbl)
+    "treasury_spread": "T10Y2Y",  # 10y-2y term spread (recession/curve signal)
 }
 
 

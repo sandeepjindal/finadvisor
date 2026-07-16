@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sqlite3
 
+from brain.signals import SIGNALS_INDEXES, SIGNALS_TABLES
 from logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -53,6 +54,9 @@ _TABLES = [
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         kind TEXT, path TEXT, title TEXT, ingested_at TEXT, clean_text TEXT
     )""",
+    # Historical brain / learning loop (Work-stream D) — registered here so the whole
+    # schema is created and maintained in one place. See brain/signals.py.
+    *SIGNALS_TABLES,
 ]
 
 _INDEXES = [
@@ -61,6 +65,7 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_fundamentals_ticker ON fundamentals(ticker, as_of DESC)",
     "CREATE INDEX IF NOT EXISTS idx_alerts_ticker_type ON alerts_sent(ticker, type, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_documents_kind ON documents(kind)",
+    *SIGNALS_INDEXES,
 ]
 
 # Standalone (contentless) FTS5 tables; app code inserts mirrored rows on ingest.

@@ -76,20 +76,15 @@ class MarketDataProvider(ABC):
 class YFinanceProvider(MarketDataProvider):
     name = "yfinance"
 
-    def get_quote(self, ticker: str) -> Quote:
-        t = validate_ticker(ticker)
-        try:
-            info = yf.Ticker(t).info
-        except Exception as e:  # noqa: BLE001
-            raise MarketDataError(f"yfinance quote failed for {t}: {e}") from e
+    def _quote_from_info(self, symbol: str, info: dict) -> Quote:
         price = info.get("currentPrice") or info.get("regularMarketPrice")
         if price is None:
-            raise MarketDataError(f"no price for {t}")
+            raise MarketDataError(f"no price for {symbol}")
         prev = info.get("previousClose")
         change = (price - prev) if prev else None
         change_pct = (change / prev * 100) if (prev and change is not None) else None
         return Quote(
-            ticker=t,
+            ticker=symbol,
             price=float(price),
             previous_close=float(prev) if prev else None,
             change=change,
@@ -99,6 +94,34 @@ class YFinanceProvider(MarketDataProvider):
             as_of=_now(),
             source=self.name,
         )
+
+    def get_quote(self, ticker: str) -> Quote:
+        t = validate_ticker(ticker)
+        try:
+            info = yf.Ticker(t).info
+        except Exception as e:  # noqa: BLE001
+            raise MarketDataError(f"yfinance quote failed for {t}: {e}") from e
+        return self._quote_from_info(t, info)
+
+    def get_sector(self, ticker: str) -> str | None:
+        """GICS-style sector via yfinance ``.info['sector']``; None on any failure."""
+        try:
+            t = validate_ticker(ticker)
+            return yf.Ticker(t).info.get("sector")
+        except Exception:  # noqa: BLE001
+            return None
+
+    def get_futures(self, symbol: str) -> Quote:
+        """Quote for a commodity/index future (e.g. CL=F crude, GC=F gold). These symbols
+        contain '=' and so bypass the equity ticker validator; reuses quote logic."""
+        sym = (symbol or "").strip().upper()
+        if not sym:
+            raise MarketDataError("empty futures symbol")
+        try:
+            info = yf.Ticker(sym).info
+        except Exception as e:  # noqa: BLE001
+            raise MarketDataError(f"yfinance futures failed for {sym}: {e}") from e
+        return self._quote_from_info(sym, info)
 
     def get_history(self, ticker: str, period: str = "1y"):
         t = validate_ticker(ticker)
@@ -190,3 +213,20 @@ class MarketData:
 
     def get_history(self, ticker: str, period: str = "1y"):
         return self._try("get_history", "history", ticker, period)
+
+    def get_sector(self, ticker: str) -> str | None:
+        """First provider that can resolve a sector wins; None if none can."""
+        for p in self.providers:
+            fn = getattr(p, "get_sector", None)
+            if fn is None:
+                continue
+            try:
+                sector = fn(ticker)
+            except Exception:  # noqa: BLE001
+                continue
+            if sector:
+                return sector
+        return None
+
+    def get_futures(self, symbol: str):
+        return self._try("get_futures", "futures", symbol)

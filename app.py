@@ -30,6 +30,7 @@ from scheduler.jobs import (
     daily_crawl_job,
     format_digest,
     maintenance_job,
+    world_scan_job,
 )
 from security.guards import sanitize_user_text
 
@@ -88,7 +89,12 @@ def _start_scheduler(ctx):  # pragma: no cover - background timers
 
     def digest():
         scores = build_digest_scores(market, rss, conn, rules, _tickers())
-        post = format_digest(scores)
+        try:
+            backdrop = world_scan_job(market)  # trending macro/geopolitical themes
+        except Exception as e:  # noqa: BLE001 - backdrop is best-effort
+            log.warning("world scan failed: %s", e)
+            backdrop = []
+        post = format_digest(scores, backdrop=backdrop)
         if cfg.discord_digest_channel_id:
             ctx.bot.loop.create_task(_send_digest(ctx, post))
 

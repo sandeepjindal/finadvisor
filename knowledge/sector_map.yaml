@@ -1,0 +1,37 @@
+# Editable "skill": event theme -> impacted sectors -> ETF proxy + direction + rationale.
+# Tunable without code, same philosophy as rules.yaml. Directions are the *expected* move;
+# agent/events.py confirms each against the real ETF trend before surfacing it as active.
+# ETFs are liquid proxies: energy XLE, defense ITA, airlines JETS, semiconductors SOXX/SMH,
+# technology XLK, financials XLF.
+themes:
+  middle_east_conflict:
+    keywords: [iran, israel, strait of hormuz, hormuz, oil embargo, tehran, houthi, gaza, hezbollah]
+    impacts:
+      energy:         {direction: up,   etf: XLE,  why: oil supply risk}
+      defense:        {direction: up,   etf: ITA,  why: military spend}
+      airlines:       {direction: down, etf: JETS, why: jet-fuel cost}
+      semiconductors: {direction: down, etf: SOXX, why: supply/logistics risk}
+
+  rate_shock:
+    keywords: [rate hike, fed funds, hawkish, inflation surprise, rate cut, powell, fomc]
+    impacts:
+      technology: {direction: down, etf: XLK, why: long-duration valuations hit by higher rates}
+      financials: {direction: up,   etf: XLF, why: wider net interest margins}
+
+  oil_supply_shock:
+    keywords: [opec, oil production cut, crude spike, oil embargo, pipeline attack, refinery outage]
+    impacts:
+      energy:   {direction: up,   etf: XLE,  why: crude price surge lifts producers}
+      airlines: {direction: down, etf: JETS, why: fuel is a top airline cost}
+
+  china_tech_restrictions:
+    keywords: [china export ban, semiconductor sanctions, chip export controls, entity list, taiwan, tsmc]
+    impacts:
+      semiconductors: {direction: down, etf: SOXX, why: lost China revenue and supply chain risk}
+      technology:     {direction: down, etf: XLK,  why: hardware supply and demand disruption}
+
+  ai_capex_boom:
+    keywords: [ai capex, datacenter buildout, gpu demand, ai infrastructure, hyperscaler spend, accelerator demand]
+    impacts:
+      semiconductors: {direction: up, etf: SMH, why: surging accelerator and GPU demand}
+      technology:     {direction: up, etf: XLK, why: AI platform and software tailwind}

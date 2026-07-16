@@ -10,6 +10,7 @@ from scheduler.jobs import (
     daily_crawl_job,
     format_digest,
     maintenance_job,
+    world_scan_job,
 )
 
 
@@ -108,6 +109,46 @@ def test_format_digest():
     out = format_digest(scores)
     assert "A" in out and "B" in out
     assert "Not financial advice" in out
+
+
+def test_world_scan_job_detects_and_confirms():
+    from data.worldnews import Headline
+
+    sector_map = {
+        "middle_east_conflict": {
+            "keywords": ["iran", "strait of hormuz"],
+            "impacts": {
+                "energy": {"direction": "up", "etf": "XLE", "why": "oil"},
+                "airlines": {"direction": "down", "etf": "JETS", "why": "fuel"},
+            },
+        }
+    }
+    news_fn = lambda q: [  # noqa: E731
+        Headline("Iran tensions rattle Strait of Hormuz", "u", "s", "d", "oil supply fear")
+    ]
+    events = world_scan_job(FakeMarket(), news_fn=news_fn, sector_map=sector_map, queries=("x",))
+    assert len(events) == 1
+    assert events[0].theme == "middle_east_conflict"
+    # FakeMarket returns Unavailable history -> confirmation stays None (graceful).
+    assert all(i["confirmed"] is None for i in events[0].impacts)
+
+
+def test_format_digest_includes_backdrop():
+    from agent.events import DetectedEvent
+
+    rules = load_rules()
+    scores = [score_ticker("A", trend="up", rsi=50, pe=12, profit_margin=0.3, sentiment=0.5, rules=rules)]
+    backdrop = [
+        DetectedEvent(
+            theme="middle_east_conflict",
+            impacts=[
+                {"sector": "energy", "direction": "up", "etf": "XLE"},
+                {"sector": "airlines", "direction": "down", "etf": "JETS"},
+            ],
+        )
+    ]
+    out = format_digest(scores, backdrop=backdrop)
+    assert "Market backdrop" in out and "energy" in out and "airlines" in out
 
 
 def test_build_digest_scores_handles_unavailable(tmp_path):

@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 from agent.exit_advisor import (
     enrich_exit_verdict,
@@ -120,3 +121,75 @@ def test_enrich_llm_error_is_safe():
     base = ExitVerdict("NVDA", "SELL", "structural", -5.0, [])
     out = enrich_exit_verdict(base, "ctx", Boom())
     assert out.action == "SELL"  # unchanged, no crash
+
+
+# --- Work-stream A: multi-timeframe, crosses, ATR-sized stop ----------------------
+
+
+def _transient_pullback():
+    """Long-term uptrend with a recent, shallow pullback in the last ~3 months.
+    Full-frame trend stays up; the tail(63) short window reads down => transient.
+    """
+    rise = np.linspace(100, 400, 230)
+    pull = np.linspace(400, 370, 30)
+    return pd.DataFrame({"Close": [float(v) for v in np.concatenate([rise, pull])]})
+
+
+def _death_cross_frame():
+    up = np.linspace(150, 300, 215)
+    down = np.linspace(299, 150, 260 - 215)
+    return pd.DataFrame({"Close": [float(v) for v in np.concatenate([up, down])]})
+
+
+def _ohlcv_rising():
+    n = 60
+    close = [100.0 + i * 0.5 for i in range(n)]
+    return pd.DataFrame(
+        {
+            "High": [c + 2 for c in close],
+            "Low": [c - 2 for c in close],
+            "Close": close,
+            "Volume": [1000.0] * n,
+        }
+    )
+
+
+def test_transient_pullback_within_uptrend(tmp_path):
+    conn, h = _holding(tmp_path)
+    market = FakeMarket(price=370.0, hist=_transient_pullback(), pe=20)
+    v = evaluate_exit(h, market, conn, load_rules())
+    assert v.classification == "transient"
+    assert any("pullback" in r.lower() for r in v.reasons)
+
+
+def test_structural_when_both_timeframes_down(tmp_path):
+    conn, h = _holding(tmp_path)
+    market = FakeMarket(price=50.0, hist=_falling(), pe=20)
+    v = evaluate_exit(h, market, conn, load_rules())
+    assert v.classification == "structural"
+    assert any("both short- and long-term" in r.lower() for r in v.reasons)
+
+
+def test_death_cross_flags_structural(tmp_path):
+    conn, h = _holding(tmp_path)
+    market = FakeMarket(price=150.0, hist=_death_cross_frame(), pe=20)
+    v = evaluate_exit(h, market, conn, load_rules())
+    assert v.classification == "structural"
+    assert any("death cross" in r.lower() for r in v.reasons)
+
+
+def test_atr_sized_stop_when_volatility_available(tmp_path):
+    conn, h = _holding(tmp_path)
+    market = FakeMarket(price=130.0, hist=_ohlcv_rising(), pe=20)
+    v = evaluate_exit(h, market, conn, load_rules())
+    assert v.suggested_rule is not None and "ATR" in v.suggested_rule
+    assert any(c.metric == "atr" for c in v.citations)
+
+
+def test_flat_stop_fallback_without_ohlc(tmp_path):
+    conn, h = _holding(tmp_path)
+    market = FakeMarket(price=260.0, hist=_rising(), pe=20)
+    v = evaluate_exit(h, market, conn, load_rules())
+    # Close-only frame => no ATR => flat trailing-stop percentage fallback.
+    assert v.suggested_rule is not None and "%" in v.suggested_rule
+    assert not any(c.metric == "atr" for c in v.citations)

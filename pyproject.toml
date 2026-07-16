@@ -28,6 +28,9 @@ news = ["feedparser>=6.0", "trafilatura>=1.8", "ddgs>=2.0", "vaderSentiment>=3.3
 documents = ["pypdf>=4.0"]
 # Phase 4 (optional)
 macro = ["fredapi>=0.5"]
+# Social & search-attention signals (Work-stream C). StockTwits/Reddit use base httpx;
+# these add Google Trends (pytrends) and the Reddit API client (praw). Opt-in.
+social = ["pytrends>=4.9", "praw>=7.7"]
 finbert = ["transformers>=4.40", "torch>=2.2"]
 semantic = ["sentence-transformers>=3.0", "sqlite-vec>=0.1"]
 backtest = ["vectorbt>=0.26"]

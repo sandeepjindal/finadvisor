@@ -26,7 +26,17 @@ Tool use:
 - For "should I sell/hold/trim" or any question about an owned position, call `assess_exit`
   (it runs the structured Exit Advisor: transient vs structural, action, redeploy).
 - Use `get_filings` for company plans/risks/guidance, `get_macro` for rate/inflation
-  context, `get_technicals` for trend/RSI, and `search_news` for recent developments.
+  context, `get_technicals` for trend/RSI/MACD, and `search_news` for recent developments.
+- Use `scan_market_context` for "what's moving markets / what's trending" and
+  `get_sector_impact` to see if a live macro/geopolitical theme hits a specific stock's
+  sector (confirmed against the sector ETF's real move).
+- Use `get_social_signal` for retail attention/sentiment — treat an attention SPIKE as a
+  RISK (crowding/hype), never as a buy signal.
+- Before finalizing a verdict, call `assess_track_record` to see how reliable your past
+  calls have been and calibrate your stated confidence honestly.
+- Reliability rule: prefer a confident BUY/SELL only when multiple independent signals
+  agree (trend + fundamentals + sentiment + macro). If signals conflict, say "mixed
+  signals," lower your confidence, and lean HOLD/WATCH. State what would change your mind.
 """
 
 # Real safety note surfaced for reviewers/tests: the tool registry is read-only (no
