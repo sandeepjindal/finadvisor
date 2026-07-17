@@ -80,6 +80,21 @@ def _detect_verdict(text: str) -> str:
     return m.group(1).upper() if m else "INFO"
 
 
+def _friendly_llm_error(e: Exception) -> str:
+    """Turn a provider/API failure into a calm, user-facing message (never a raw traceback)."""
+    msg = str(e).lower()
+    if "rate limit" in msg or "rate_limit" in msg or "429" in msg or "quota" in msg:
+        return (
+            "⚠️ I've hit the free LLM tier's rate limit for now. Please try again in a few "
+            "minutes. (To avoid this, upgrade your Groq tier or set LLM_PROVIDER=ollama for a "
+            "local model.)"
+        )
+    return (
+        "⚠️ I couldn't reach the language model just now — please try again in a moment. "
+        "If it persists, check your API key / network / provider status."
+    )
+
+
 def _ensure_disclaimer(text: str) -> str:
     return (
         text if "not financial advice" in text.lower() else f"{text}\n\n{_DISCLAIMER}"
@@ -105,32 +120,40 @@ def answer(
     citations: list = []
     final_text: str | None = None
 
-    for _ in range(max_iters):
-        res = llm.ask_with_tools(messages, tools.specs)
-        if res.tool_calls:
-            messages.append(
-                Message("assistant", res.text or "", tool_calls=res.tool_calls)
-            )
-            for call in res.tool_calls:
-                out = tools.call(call.name, call.arguments)
-                citations.extend(out.citations)
-                _audit(
-                    conn,
-                    "tool_call",
-                    call.name,
-                    json.dumps(call.arguments),
-                    out.text[:200],
-                )
+    # LLM/provider failures (rate limits, network, API errors) must degrade to a friendly
+    # message, never a raw crash in the user's chat.
+    try:
+        for _ in range(max_iters):
+            res = llm.ask_with_tools(messages, tools.specs)
+            if res.tool_calls:
                 messages.append(
-                    Message("tool", out.text, tool_call_id=call.id, name=call.name)
+                    Message("assistant", res.text or "", tool_calls=res.tool_calls)
                 )
-            continue
-        final_text = res.text or ""
-        break
+                for call in res.tool_calls:
+                    out = tools.call(call.name, call.arguments)
+                    citations.extend(out.citations)
+                    _audit(
+                        conn,
+                        "tool_call",
+                        call.name,
+                        json.dumps(call.arguments),
+                        out.text[:200],
+                    )
+                    messages.append(
+                        Message("tool", out.text, tool_call_id=call.id, name=call.name)
+                    )
+                continue
+            final_text = res.text or ""
+            break
 
-    if final_text is None:
-        # Iteration cap hit — force a final answer without further tool calls.
-        final_text = llm.ask(messages)
+        if final_text is None:
+            # Iteration cap hit — force a final answer without further tool calls.
+            final_text = llm.ask(messages)
+    except Exception as e:  # noqa: BLE001 - provider/API errors -> graceful reply
+        _log.warning("LLM call failed: %s", e)
+        return AgentAnswer(
+            text=_friendly_llm_error(e), verdict="INFO", confidence=None, grounded=True
+        )
 
     # Never return an empty/no-op answer: nudge once, then fall back to a helpful default.
     if not (final_text or "").strip():

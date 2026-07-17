@@ -105,6 +105,29 @@ def test_grounding_flags_fabricated_number(tmp_path):
     assert "Unverified" in ans.text
 
 
+def test_rate_limit_degrades_gracefully(tmp_path):
+    conn = init_db(str(tmp_path / "brain.db"))
+
+    class RateLimitedLLM(FakeLLM):
+        def ask_with_tools(self, messages, tools):
+            raise RuntimeError("Error code: 429 - rate_limit_exceeded (tokens per day)")
+
+    ans = engine.answer("any index funds?", conn, RateLimitedLLM(), _registry(conn), ticker=None)
+    assert "rate limit" in ans.text.lower()
+    assert ans.verdict == "INFO"  # no crash, friendly message
+
+
+def test_generic_llm_error_degrades_gracefully(tmp_path):
+    conn = init_db(str(tmp_path / "brain.db"))
+
+    class BrokenLLM(FakeLLM):
+        def ask_with_tools(self, messages, tools):
+            raise RuntimeError("connection reset")
+
+    ans = engine.answer("q", conn, BrokenLLM(), _registry(conn))
+    assert "couldn't reach" in ans.text.lower() and ans.verdict == "INFO"
+
+
 def test_iteration_cap_forces_final(tmp_path):
     conn = init_db(str(tmp_path / "brain.db"))
     q = Quote("NVDA", 120.0, 100.0, 20.0, 20.0, 1000, "USD", "t", "yfinance")
