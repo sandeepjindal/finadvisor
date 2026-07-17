@@ -132,6 +132,27 @@ def answer(
         # Iteration cap hit — force a final answer without further tool calls.
         final_text = llm.ask(messages)
 
+    # Never return an empty/no-op answer: nudge once, then fall back to a helpful default.
+    if not (final_text or "").strip():
+        messages.append(
+            Message(
+                "user",
+                "Give a concise, useful answer now from the data gathered. If the question "
+                "was broad, suggest 2-3 specific tickers or headlines with a one-line reason "
+                "each. Do not reply with only a disclaimer.",
+            )
+        )
+        try:
+            final_text = llm.ask(messages) or ""
+        except Exception:  # noqa: BLE001
+            final_text = ""
+    if not (final_text or "").strip():
+        final_text = (
+            "I couldn't gather enough live data to answer that just now. Try: a specific "
+            "ticker (e.g. \"How's NVDA?\"), \"what's moving markets today?\", or "
+            "\"find me cheap profitable stocks in an uptrend.\""
+        )
+
     grounding = validate_grounding(final_text, citations)
     if not grounding.ok:
         flagged = ", ".join(str(u) for u in grounding.unsupported)

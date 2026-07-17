@@ -734,13 +734,30 @@ class ToolRegistry:
         from agent.compare import compare_tickers, format_compare
 
         res = compare_tickers(args["tickers"], self.market)
-        return ToolOutput(format_compare(res), res.get("citations", []))
+        # Ground every figure the comparison surfaces so the validator doesn't flag them.
+        cites = list(res.get("citations") or [])
+        for r in res.get("rows", []):
+            for metric, val, nd in (
+                ("price", r.get("price"), 2),
+                ("pe", r.get("pe"), 1),
+                ("trend_strength", r.get("trend_strength"), 2),
+                ("composite", r.get("composite"), 2),
+            ):
+                if isinstance(val, (int, float)):
+                    cites.append(Citation(f"{metric}:{r['ticker']}", round(val, nd), "computed", "now"))
+        return ToolOutput(format_compare(res), cites)
 
     def _discover_stocks(self, args) -> ToolOutput:
         from agent.discovery import discover_stocks, format_discovery, parse_criteria
 
         res = discover_stocks(parse_criteria(args["query"]), self.market)
-        return ToolOutput(format_discovery(res), [])
+        cites = []
+        for m in res.get("matches", []):
+            if isinstance(m.get("pe"), (int, float)):
+                cites.append(Citation(f"pe:{m['ticker']}", round(m["pe"], 1), "yfinance", "now"))
+            if isinstance(m.get("composite"), (int, float)):
+                cites.append(Citation(f"score:{m['ticker']}", round(m["composite"], 2), "computed", "now"))
+        return ToolOutput(format_discovery(res), cites)
 
     def _get_analyst_ratings(self, args) -> ToolOutput:
         from data.analyst import format_analyst, get_analyst_ratings
