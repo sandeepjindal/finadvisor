@@ -22,7 +22,7 @@ def test_overlong_single_line_hard_split():
     assert "".join(chunks) == "y" * 5000
 
 
-def test_format_answer_has_verdict_citations_disclaimer():
+def test_format_answer_badges_actionable_verdict_no_sources():
     ans = SimpleNamespace(
         verdict="HOLD",
         text="NVDA is fine.\n\n⚠️ Not financial advice.",
@@ -30,5 +30,15 @@ def test_format_answer_has_verdict_citations_disclaimer():
     )
     out = format_answer(ans)
     assert "**HOLD**" in out
-    assert "price = 120.0 [yfinance]" in out
     assert "Not financial advice" in out
+    assert "Sources" not in out and "[yfinance]" not in out  # sources footer removed
+
+
+def test_format_answer_info_is_plain_conversational():
+    ans = SimpleNamespace(
+        verdict="INFO",
+        text="Here are some ideas...",
+        citations=[Citation("pe", 14.9, "yfinance", "t")],
+    )
+    out = format_answer(ans)
+    assert out == "Here are some ideas..."  # no verdict badge, no sources

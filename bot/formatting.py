@@ -6,20 +6,19 @@ from __future__ import annotations
 
 DISCORD_LIMIT = 2000
 
+# Verdicts worth badging at the top; everything else (INFO, guides, chit-chat) reads as a
+# plain conversational reply. Citations still power grounding internally but are NOT shown.
+_ACTIONABLE = {
+    "STRONG BUY", "BUY", "SELL", "STRONG SELL", "TRIM", "HOLD", "WATCH", "AVOID",
+}
+
 
 def format_answer(ans) -> str:
-    parts = [f"**{ans.verdict}**", "", ans.text]
-    if ans.citations:
-        parts.append("")
-        parts.append("_Sources:_")
-        seen = set()
-        for c in ans.citations:
-            key = (c.metric, c.source)
-            if key in seen:
-                continue
-            seen.add(key)
-            parts.append(f"• {c.metric} = {c.value} [{c.source}]")
-    return "\n".join(parts)
+    text = ans.text
+    verdict = (getattr(ans, "verdict", "") or "").upper()
+    if verdict in _ACTIONABLE:
+        return f"**{verdict}**\n\n{text}"
+    return text
 
 
 def chunk_message(text: str, limit: int = DISCORD_LIMIT) -> list[str]:

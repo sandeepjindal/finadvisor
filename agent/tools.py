@@ -266,6 +266,14 @@ class ToolRegistry:
             self._discover_stocks,
         )
         self._add(
+            "industry_outlook",
+            "Which industries/sectors are leading right now — ranked by live trend of their "
+            "sector & commodity ETFs (AI/semis, tech, energy, financials, gold, oil, ...). "
+            "Use for 'which industry can grow / where's the growth / investment guide'.",
+            {"type": "object", "properties": {}},
+            self._industry_outlook,
+        )
+        self._add(
             "get_analyst_ratings",
             "Wall-Street analyst consensus (buy/hold/sell counts), mean price target and "
             "implied upside for a ticker.",
@@ -758,6 +766,12 @@ class ToolRegistry:
             if isinstance(m.get("composite"), (int, float)):
                 cites.append(Citation(f"score:{m['ticker']}", round(m["composite"], 2), "computed", "now"))
         return ToolOutput(format_discovery(res), cites)
+
+    def _industry_outlook(self, args) -> ToolOutput:
+        from agent.outlook import format_outlook, industry_outlook, outlook_citations
+
+        reads = industry_outlook(self.market)
+        return ToolOutput(format_outlook(reads), outlook_citations(reads))
 
     def _get_analyst_ratings(self, args) -> ToolOutput:
         from data.analyst import format_analyst, get_analyst_ratings
