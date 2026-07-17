@@ -1,10 +1,13 @@
 # Personal Financial Advisor 🤖📈
 
 A **standalone, open-source, model-independent** AI agent that acts as your personal
-financial advisor over **Discord**, **WhatsApp**, or a terminal. It reasons over live market data,
-fundamentals, technicals, news, SEC filings, and macro factors; remembers its own analyses
-in a local "brain"; advises on entries, **exits**, and capital redeployment; and can
-proactively monitor a portfolio you tell it about.
+financial advisor over **Discord** or a terminal. It reasons over live market data,
+graded technicals, **multi-year fundamentals**, **analyst ratings**, **ownership/insider
+activity**, news, SEC filings, macro, **geopolitical events**, and **retail/social
+sentiment**; runs a full **due-diligence thesis**; remembers its own analyses in a local
+"brain" and **learns from its own track record**; advises on entries, **exits**, capital
+redeployment, and (educationally) day-trading and options; and proactively monitors a
+portfolio you tell it about.
 
 > ⚠️ **Advisory only — not financial advice.** This agent has **no access to bank or
 > brokerage accounts** and **cannot place trades**. Markets carry risk; you can lose money.
@@ -15,47 +18,71 @@ proactively monitor a portfolio you tell it about.
 ## ✨ Features
 
 - **Conversational Q&A** — *"What's NVDA looking like?"* → a reasoned, **data-grounded**
-  answer with cited numbers and explicit uncertainty.
-- **Exit Advisor** ⭐ — *"Should I sell my NVDA?"* → HOLD / TRIM / SELL, with a
-  **transient-vs-structural** call, a concrete rule (trailing stop), and a **redeploy idea**
-  — refined by an optional LLM layer.
+  answer with cited numbers and explicit uncertainty. Handles open-ended asks too
+  (*"any investment ideas?"*, *"which industries can grow?"*) proactively.
+- **Full due-diligence thesis** ⭐ — *"Should I invest in MSFT?"* → `build_thesis` composes
+  **valuation, multi-year financial trends, analyst ratings, ownership/insiders, growth, and
+  graded price trend** into a **confirmation-required** BUY/HOLD/WATCH/SELL verdict, a
+  **bear/base/bull range** (not a point forecast), and **confidence calibrated to the agent's
+  own past hit-rate**.
+- **Enriched trend analysis** — graded trend strength, MACD crossover, golden/death cross,
+  ATR-sized stops, and **multi-timeframe** (transient-vs-structural).
+- **Exit Advisor** — *"Should I sell my NVDA?"* → HOLD / TRIM / SELL, transient-vs-structural,
+  ATR trailing stop, redeploy idea; **social hype-spike tightens the stop**.
+- **Market/geopolitical intelligence** — *"what's moving markets?"* → detects themes
+  (e.g. Middle-East conflict → energy/defense ↑, airlines/semis ↓) **confirmed against each
+  sector ETF's real move**, plus an **industry outlook** ranking sectors & commodities by trend.
+- **Social & search-attention signals** — StockTwits / Reddit / Google Trends; an attention
+  **spike is treated as a risk flag**, never a buy signal.
+- **Day-trading & options guidance** — educational, risk-first: intraday setups with
+  entry/stop/target and R:R; option IV rank, break-even, probability-ITM; favors covered
+  calls / cash-secured puts, warns hard on leverage.
+- **Portfolio analytics, compare & discovery** — concentration/correlation/beta,
+  side-by-side `compare_tickers`, and NL screening (*"cheap profitable stocks in an uptrend"*).
 - **Portfolio tracking** — natural language (*"I own 30 NVDA at $450"*), `/portfolio`
   commands, or broker **CSV import**.
-- **Proactive monitoring** — daily job watches your holdings and pings you on meaningful
-  moves (cooldown-deduped, no spam).
-- **Morning digest** — scheduled, screened stock/fund ideas.
-- **Local "brain"** — a single SQLite file remembers every analysis to inform future
-  decisions; keyword search now, **semantic recall** planned.
+- **Proactive monitoring + morning digest** — daily job pings on meaningful moves
+  (cooldown-deduped) and pushes a screened, macro-aware digest to Discord.
+- **Learning "brain"** — a single SQLite file remembers every analysis + signal snapshot,
+  scores past calls against realized price, and feeds its **track record** back into new
+  advice; keyword search now, **semantic recall** planned.
 - **Document ingestion** — drop PDFs/CSVs in `documents/`; the agent reads and searches them.
-- **Free & model-independent** — defaults to the free [Groq](https://console.groq.com) tier
-  (open models); swap to local [Ollama](https://ollama.com), Gemini, Claude, or OpenAI with
-  one env var. No vendor lock-in.
+- **Free & model-independent** — defaults to the free [Groq](https://console.groq.com) tier;
+  swap to local [Ollama](https://ollama.com) or **Claude** (Anthropic) with one env var.
+  Gemini/OpenAI are stubs. No vendor lock-in.
 - **Editable "skills"** — tune behavior by editing markdown in `knowledge/` and thresholds
   in `rules.yaml` — no code changes.
 - **Guardrails first** — read-only tools (cannot trade), prompt-injection isolation,
-  programmatic number-grounding, Discord whitelist, secret-redacted logs, SSRF protection.
+  programmatic number-grounding, Discord whitelist, secret-redacted logs, SSRF protection,
+  graceful degradation on rate limits / down data sources.
 
 ---
 
 ## 🧠 How it works
 
 ```
- Discord / WhatsApp / CLI ──► Agent Engine (tool-calling loop) ──► LLM (Groq/Ollama/…)
-                          │
-        ┌─────────────────┼───────────────┬──────────────┐
-        ▼                 ▼               ▼              ▼
-   Market data       News / search     The "Brain"     Knowledge
-   (yfinance,        (RSS, ddgs,       (SQLite:        (playbooks +
-    +OpenBB)          SEC EDGAR, FRED)  analyses,        rules.yaml)
-                                        holdings, …)
+ Discord / CLI ──► Agent Engine (tool-calling loop) ──► LLM (Groq / Ollama / Claude)
+              │
+   ┌──────────┼───────────┬──────────────┬───────────────┬─────────────┐
+   ▼          ▼           ▼              ▼               ▼             ▼
+ Market    News /      Fundamentals   Events /        Social /      The "Brain"
+ (yfinance) search      + analysts     geopolitics     attention     (SQLite: analyses,
+  quotes/   (RSS,ddgs,  (financials,   (world news,    (StockTwits,   signal snapshots,
+  trend)    SEC,FRED)   ownership,     GDELT →         Reddit,        decision outcomes,
+                        valuation)     sector map)     Trends)        holdings, track record)
                           ▲
-                    Scheduler (daily crawl, morning digest, monitoring)
+                    Scheduler (daily crawl, world scan, morning digest, monitoring)
 ```
 
-The LLM is given **read-only tools** (`get_quote`, `get_fundamentals`, `get_technicals`,
-`search_news`, `get_filings`, `get_macro`, `assess_exit`, `recall_analysis`,
-`read_playbook`, document tools) and decides which to call. Every figure it reports is
-**validated against tool output** so it can't fabricate prices/ratios.
+The LLM is given **read-only tools** and decides which to call:
+`get_quote`, `get_fundamentals`, `get_technicals`, `search_news`, `get_filings`, `get_macro`,
+`assess_exit`, `recall_analysis`, `read_playbook`, document tools · **new:**
+`build_thesis`, `get_analyst_ratings`, `get_ownership`, `get_financial_trends`,
+`get_valuation_context`, `get_growth_estimates`, `get_catalysts`, `scan_market_context`,
+`get_sector_impact`, `industry_outlook`, `get_social_signal`, `analyze_portfolio`,
+`compare_tickers`, `discover_stocks`, `get_intraday`, `day_trading_plan`,
+`get_options_chain`, `assess_option`, `recall_signal_history`, `assess_track_record`.
+Every figure it reports is **validated against tool output** so it can't fabricate prices/ratios.
 
 ---
 
@@ -85,9 +112,6 @@ uv run python scripts/chat.py                          # chat in your terminal �
      green `+` → *Create My Own*).
   3. Your **user ID**: Discord → *Settings → Advanced → Developer Mode* on, then right-click
      your name → *Copy User ID*.
-- **For WhatsApp** (optional): use the official WhatsApp Cloud API with a WhatsApp Business
-  Platform test/business number. You can chat with that bot number from WhatsApp on your
-  iPhone, but the official API does **not** automate your personal iPhone WhatsApp account.
 
 ---
 
@@ -100,10 +124,13 @@ uv sync --extra data --extra news --extra documents
 
 | Extra | Adds |
 |-------|------|
-| `data` | yfinance, ta, pandas, numpy (quotes, fundamentals, technicals) |
-| `news` | feedparser, trafilatura, ddgs, vaderSentiment (news + search + sentiment) |
+| `data` | yfinance, ta, pandas, numpy (quotes, fundamentals, technicals, analysts, ownership, options, intraday) |
+| `news` | feedparser, trafilatura, ddgs, vaderSentiment (news + search + sentiment + world/GDELT) |
 | `documents` | pypdf (ingest PDFs) |
+| `social` | pytrends, praw (Google Trends + Reddit; StockTwits needs no extra) |
 | `macro` | fredapi (macro indicators) |
+| `claude` | anthropic (Claude LLM provider) |
+| `mcp` | mcp (optional MCP web-research backend — scaffold) |
 | `finbert` | transformers + torch (finance sentiment) |
 | `semantic` | sentence-transformers + sqlite-vec (semantic recall — planned) |
 | `backtest` | vectorbt (or pure-pandas fallback, built-in) |
@@ -118,18 +145,17 @@ Copy `.env.example` → `.env` and fill in. Key settings:
 
 | Var | Purpose |
 |-----|---------|
-| `LLM_PROVIDER` | `groq` (default) · `ollama` (local) · `gemini`/`claude`/`openai` |
+| `LLM_PROVIDER` | `groq` (default) · `ollama` (local) · `claude` (Anthropic) · `gemini`/`openai` (stubs) |
 | `GROQ_API_KEY` / `GROQ_MODEL` | Groq credentials / model |
 | `OLLAMA_MODEL` | model when `LLM_PROVIDER=ollama` |
+| `ANTHROPIC_API_KEY` / `CLAUDE_MODEL` | Claude — **key optional** (falls back to an `ant auth login` profile); model defaults to `claude-opus-4-8` |
 | `DISCORD_TOKEN` / `DISCORD_ALLOWED_IDS` | bot token + your whitelisted user id(s) |
-| `DISCORD_DIGEST_CHANNEL_ID` | channel for the morning digest |
-| `WHATSAPP_VERIFY_TOKEN` | webhook verification token you choose in Meta Developer settings |
-| `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Cloud API credentials |
-| `WHATSAPP_ALLOWED_NUMBERS` | comma-separated phone allowlist, e.g. `+14155550123` |
-| `WHATSAPP_WEBHOOK_PATH` / `WHATSAPP_PORT` | local webhook path/port, defaults to `/webhook/whatsapp` and `8000` |
+| `DISCORD_DIGEST_CHANNEL_ID` | channel for the morning digest (blank = no push) |
 | `MARKET_TZ` / `DIGEST_TIME` | when the daily digest runs |
 | `ARTICLE_RETENTION_DAYS` | prune crawled article text after N days |
 | `WEB_SEARCH_BACKEND` | `ddgs` (free) / `tavily` / `mcp` |
+| `MCP_SEARCH_COMMAND` / `MCP_SEARCH_URL` / `MCP_SEARCH_TOOL` | MCP research server (only if `WEB_SEARCH_BACKEND=mcp`) |
+| `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` | optional Reddit app for the social signal (unauth `.json` is 403-blocked) |
 | `PRIVACY_MODE` | `local` routes portfolio questions to Ollama |
 
 **Switch model** = one line (`LLM_PROVIDER=ollama`). **Tune behavior** = edit `knowledge/*.md`
@@ -149,17 +175,6 @@ uv run python scripts/chat.py
 uv run python app.py        # then DM your bot or @mention it
 ```
 
-**WhatsApp bot:**
-```bash
-uv run python whatsapp_app.py
-# in another terminal, expose it with HTTPS for Meta's webhook verification:
-ngrok http 8000
-```
-Set the Meta webhook callback URL to `https://YOUR-NGROK-DOMAIN/webhook/whatsapp` and
-use the same value for `WHATSAPP_VERIFY_TOKEN` in `.env` and the Meta dashboard. Add your
-iPhone number to `WHATSAPP_ALLOWED_NUMBERS`, then send a WhatsApp message to the Meta test
-or business number.
-
 **Docker (single container; brain + documents persist on volumes):**
 ```bash
 docker compose up --build
@@ -172,9 +187,13 @@ monitoring), run it on an always-on host (VPS / Raspberry Pi / free-tier box).
 ## 💡 Usage
 
 - Ask: *"What's NVDA looking like?"*, *"Compare VOO vs QQQ for ~10%/yr."*
-- Track: `/portfolio add NVDA 30 450` · *"I own 30 NVDA at $450"* · drop a CSV in
-  `documents/portfolio/`
+- **Deep thesis:** *"Should I invest in MSFT?"* → full due-diligence verdict + bear/base/bull range
+- **Ideas / outlook:** *"Any investment ideas?"*, *"Which industries can grow right now?"*,
+  *"What's moving markets today?"*, *"Find me cheap profitable stocks in an uptrend."*
 - **Exit guidance:** *"Should I sell my NVDA?"*
+- **Portfolio:** *"Is my portfolio too concentrated?"* · `/portfolio add NVDA 30 450` ·
+  *"I own 30 NVDA at $450"* · drop a CSV in `documents/portfolio/`
+- **Higher-risk (educational):** *"Day-trade setup for TSLA?"*, *"Is the NVDA 150 call worth it?"*
 - Watchlist: `/watchlist add NVDA ai leader`
 - Research: drop a PDF in `documents/reports/` → *"summarize my NVDA report"*
 
@@ -183,7 +202,7 @@ monitoring), run it on an always-on host (VPS / Raspberry Pi / free-tier box).
 ## 🧪 Testing
 
 ```bash
-uv run pytest -q                 # offline suite (mocked) — 180+ tests
+uv run pytest -q                 # offline suite (mocked) — 398 tests
 ```
 Full real-scenario walkthrough (live APIs + Discord/CLI, guardrail checks): see
 **[`docs/TESTING.md`](docs/TESTING.md)**.
@@ -193,10 +212,16 @@ Full real-scenario walkthrough (live APIs + Discord/CLI, guardrail checks): see
 ## 🗂️ Project structure
 
 ```
-app.py · whatsapp_app.py · config.py · http_client.py · logging_setup.py · rules.yaml
-llm/ · data/ · brain/ · agent/ · bot/ · scheduler/ · security/ · backtest/
-knowledge/ (editable playbooks) · documents/ (your inbox) · scripts/ · tests/
-docs/plans/ (design + implementation plan) · docs/TESTING.md
+app.py · config.py · http_client.py · logging_setup.py · rules.yaml
+llm/    groq · ollama · claude · factory
+data/   market · news · search · technicals · macro · filings · worldnews · social ·
+        analyst · ownership · financials · valuation · options · intraday · documents
+brain/  db · analyses · signals (learning loop) · holdings · watchlist · cache · audit
+agent/  engine · tools · thesis · exit_advisor · events · outlook · screener · daytrade ·
+        options_advisor · portfolio_analytics · compare · discovery · grounding · knowledge
+bot/ · scheduler/ · security/ · backtest/
+knowledge/ (editable playbooks + sector_map.yaml) · documents/ (your inbox) · scripts/ · tests/
+docs/plans/ (design docs) · docs/TESTING.md
 ```
 
 ---
@@ -215,9 +240,15 @@ audit log. Your `.env` is git-ignored — keys never reach the repo.
 - ✅ Phases 0–4: Q&A, digest, watchlist, portfolio, Exit Advisor, monitoring, documents,
   filings, macro, backtest, packaging.
 - ✅ Phase 5A/B: Exit Advisor + macro wired into chat; LLM-enriched exit reasoning.
-- 🔜 Phase 5C: semantic (vector) recall over the brain (design in `docs/plans/`).
-- ✅ WhatsApp adapter via the official Cloud API webhook.
-- 🔜 Always-on hosting recipe.
+- ✅ Market-intelligence enrichment (see `docs/plans/2026-07-15-…-design.md`):
+  - **A** graded multi-timeframe trend · **B** geopolitical→sector event intelligence ·
+    **C** social/attention signals · **D** learning brain + track record ·
+    **E** fundamental depth + `build_thesis` · **F** day-trading & options ·
+    **G** portfolio analytics / compare / discovery / industry outlook / skill playbooks.
+- ✅ Claude (Anthropic) LLM provider; graceful rate-limit handling; proactive advisor prompt.
+- 🔜 Phase 5C: semantic (vector) recall over the brain (designed; opt-in `[semantic]`).
+- 🔜 G5: live MCP web-research backend (scaffolded + guardrailed; needs a server/key).
+- 🔜 WhatsApp adapter · always-on hosting recipe.
 
 ---
 
