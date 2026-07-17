@@ -23,6 +23,8 @@ class Config:
     groq_api_key: str | None
     groq_model: str
     ollama_model: str
+    anthropic_api_key: str | None
+    claude_model: str
     discord_token: str
     discord_allowed_ids: frozenset[int]
     discord_digest_channel_id: int | None
@@ -102,9 +104,12 @@ def load_config(env: dict[str, str] | None = None) -> Config:
 
     groq_api_key = _clean(env.get("GROQ_API_KEY"))
     tavily_api_key = _clean(env.get("TAVILY_API_KEY"))
+    anthropic_api_key = _clean(env.get("ANTHROPIC_API_KEY"))
 
     if provider == "groq" and not groq_api_key:
         raise ConfigError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
+    # LLM_PROVIDER=claude does NOT require ANTHROPIC_API_KEY: the Anthropic SDK falls back to
+    # an `ant auth login` OAuth profile / ANTHROPIC_AUTH_TOKEN when no key is set.
 
     web_search_backend = (_clean(env.get("WEB_SEARCH_BACKEND")) or "ddgs").lower()
     if web_search_backend == "tavily" and not tavily_api_key:
@@ -126,6 +131,8 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         groq_api_key=groq_api_key,
         groq_model=_clean(env.get("GROQ_MODEL")) or "llama-3.3-70b-versatile",
         ollama_model=_clean(env.get("OLLAMA_MODEL")) or "llama3.1",
+        anthropic_api_key=anthropic_api_key,
+        claude_model=_clean(env.get("CLAUDE_MODEL")) or "claude-opus-4-8",
         discord_token=discord_token,
         discord_allowed_ids=_parse_ids(env.get("DISCORD_ALLOWED_IDS")),
         discord_digest_channel_id=_opt_int(env.get("DISCORD_DIGEST_CHANNEL_ID")),
@@ -146,7 +153,12 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     )
 
     # Make secrets unloggable.
-    for secret in (cfg.groq_api_key, cfg.discord_token, cfg.tavily_api_key):
+    for secret in (
+        cfg.groq_api_key,
+        cfg.discord_token,
+        cfg.tavily_api_key,
+        cfg.anthropic_api_key,
+    ):
         register_secret(secret)
 
     return cfg

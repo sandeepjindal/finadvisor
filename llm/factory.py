@@ -7,7 +7,7 @@ from llm.base import LLMProvider
 from llm.groq_provider import GroqProvider
 from llm.ollama_provider import OllamaProvider
 
-_STUBS = {"gemini", "claude", "openai"}
+_STUBS = {"gemini", "openai"}
 
 
 def get_llm(cfg: Config) -> LLMProvider:
@@ -16,6 +16,10 @@ def get_llm(cfg: Config) -> LLMProvider:
         return GroqProvider(cfg.groq_api_key, cfg.groq_model)
     if provider == "ollama":
         return OllamaProvider(cfg.ollama_model)
+    if provider == "claude":
+        from llm.claude_provider import ClaudeProvider
+
+        return ClaudeProvider(cfg.anthropic_api_key, cfg.claude_model)
     if provider in _STUBS:
         raise NotImplementedError(
             f"LLM provider {provider!r} is a stub; install its extra and implement it."

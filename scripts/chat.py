@@ -34,6 +34,14 @@ def make_llm():
         from llm.ollama_provider import OllamaProvider
 
         return OllamaProvider(os.environ.get("OLLAMA_MODEL", "llama3.1"))
+    if provider == "claude":
+        from llm.claude_provider import ClaudeProvider
+
+        # api_key optional: falls back to `ant auth login` profile / ANTHROPIC_AUTH_TOKEN.
+        return ClaudeProvider(
+            os.environ.get("ANTHROPIC_API_KEY"),
+            os.environ.get("CLAUDE_MODEL", "claude-opus-4-8"),
+        )
     from llm.groq_provider import GroqProvider
 
     key = os.environ.get("GROQ_API_KEY")
