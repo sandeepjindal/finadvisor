@@ -8,6 +8,8 @@ services:
     env_file: .env
     environment:
       - DB_PATH=/data/brain.db
+    ports:
+      - "8080:8080"          # WhatsApp webhook when BOT_PLATFORM=whatsapp
     volumes:
       - ./.runtime:/data          # brain.db lives here, survives restarts
       - ./documents:/app/documents # drop PDFs/CSVs here for ingestion

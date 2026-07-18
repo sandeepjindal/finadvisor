@@ -1,7 +1,7 @@
 # Personal Financial Advisor 🤖📈
 
 A **standalone, open-source, model-independent** AI agent that acts as your personal
-financial advisor over **Discord** or a terminal. It reasons over live market data,
+financial advisor over **Discord**, **WhatsApp**, or a terminal. It reasons over live market data,
 graded technicals, **multi-year fundamentals**, **analyst ratings**, **ownership/insider
 activity**, news, SEC filings, macro, **geopolitical events**, and **retail/social
 sentiment**; runs a full **due-diligence thesis**; remembers its own analyses in a local
@@ -112,6 +112,16 @@ uv run python scripts/chat.py                          # chat in your terminal �
      green `+` → *Create My Own*).
   3. Your **user ID**: Discord → *Settings → Advanced → Developer Mode* on, then right-click
      your name → *Copy User ID*.
+- **For WhatsApp** (optional — use instead of Discord):
+  1. Create a Meta developer app, add the **WhatsApp** product, and copy the temporary or
+     permanent access token plus the **Phone number ID**.
+  2. Set `BOT_PLATFORM=whatsapp`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and a
+     private `WHATSAPP_VERIFY_TOKEN` in `.env`.
+  3. Start the app, expose `http://localhost:8080/whatsapp/webhook` through a public HTTPS
+     tunnel or deployment, then enter that callback URL and the same verify token in Meta's
+     WhatsApp webhook configuration.
+  4. Subscribe the webhook to `messages`, send the bot a WhatsApp message, copy the sender ID
+     it replies with, add it to `WHATSAPP_ALLOWED_NUMBERS`, and restart.
 
 ---
 
@@ -146,11 +156,17 @@ Copy `.env.example` → `.env` and fill in. Key settings:
 | Var | Purpose |
 |-----|---------|
 | `LLM_PROVIDER` | `groq` (default) · `ollama` (local) · `claude` (Anthropic) · `gemini`/`openai` (stubs) |
+| `BOT_PLATFORM` | `discord` (default) · `whatsapp` |
 | `GROQ_API_KEY` / `GROQ_MODEL` | Groq credentials / model |
 | `OLLAMA_MODEL` | model when `LLM_PROVIDER=ollama` |
 | `ANTHROPIC_API_KEY` / `CLAUDE_MODEL` | Claude — **key optional** (falls back to an `ant auth login` profile); model defaults to `claude-opus-4-8` |
 | `DISCORD_TOKEN` / `DISCORD_ALLOWED_IDS` | bot token + your whitelisted user id(s) |
 | `DISCORD_DIGEST_CHANNEL_ID` | channel for the morning digest (blank = no push) |
+| `WHATSAPP_VERIFY_TOKEN` | private webhook verification token you also enter in Meta |
+| `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Cloud API credentials for sending replies |
+| `WHATSAPP_ALLOWED_NUMBERS` | comma-separated sender IDs / phone numbers allowed to use the bot |
+| `WHATSAPP_APP_SECRET` | optional Meta app secret for signed webhook verification |
+| `WHATSAPP_PORT` / `WHATSAPP_WEBHOOK_PATH` | local webhook listener settings; default `8080` + `/whatsapp/webhook` |
 | `MARKET_TZ` / `DIGEST_TIME` | when the daily digest runs |
 | `ARTICLE_RETENTION_DAYS` | prune crawled article text after N days |
 | `WEB_SEARCH_BACKEND` | `ddgs` (free) / `tavily` / `mcp` |
@@ -173,6 +189,12 @@ uv run python scripts/chat.py
 **Discord bot:**
 ```bash
 uv run python app.py        # then DM your bot or @mention it
+```
+
+**WhatsApp bot:**
+```bash
+# in .env: BOT_PLATFORM=whatsapp and fill the WHATSAPP_* values
+uv run python app.py        # webhook listens on http://localhost:8080/whatsapp/webhook
 ```
 
 **Docker (single container; brain + documents persist on volumes):**

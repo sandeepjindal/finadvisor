@@ -19,15 +19,25 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class Config:
+    bot_platform: str
     llm_provider: str
     groq_api_key: str | None
     groq_model: str
     ollama_model: str
     anthropic_api_key: str | None
     claude_model: str
-    discord_token: str
+    discord_token: str | None
     discord_allowed_ids: frozenset[int]
     discord_digest_channel_id: int | None
+    whatsapp_verify_token: str | None
+    whatsapp_access_token: str | None
+    whatsapp_phone_number_id: str | None
+    whatsapp_allowed_numbers: frozenset[str]
+    whatsapp_app_secret: str | None
+    whatsapp_api_version: str
+    whatsapp_host: str
+    whatsapp_port: int
+    whatsapp_webhook_path: str
     db_path: str
     article_retention_days: int
     max_tool_iters: int
@@ -66,6 +76,21 @@ def _parse_ids(raw: str | None) -> frozenset[int]:
     return frozenset(ids)
 
 
+def _normalize_whatsapp_identity(raw: str) -> str:
+    return raw.strip().removeprefix("+").replace(" ", "").replace("-", "")
+
+
+def _parse_whatsapp_allowed(raw: str | None) -> frozenset[str]:
+    raw = _clean(raw)
+    if not raw:
+        return frozenset()
+    return frozenset(
+        normalized
+        for part in raw.split(",")
+        if (normalized := _normalize_whatsapp_identity(part))
+    )
+
+
 def _parse_int(raw: str | None, default: int, name: str) -> int:
     raw = _clean(raw)
     if raw is None:
@@ -86,7 +111,18 @@ def _opt_int(raw: str | None) -> int | None:
         raise ConfigError(f"Expected integer, got {raw!r}") from e
 
 
+def _validate_discord_token(token: str) -> None:
+    lowered = token.lower()
+    if lowered in {"your_token_here", "discord_token", "token"} or "your_" in lowered:
+        raise ConfigError(
+            "DISCORD_TOKEN is still a placeholder; paste the bot token from the Discord Developer Portal"
+        )
+    if lowered.startswith("bot "):
+        raise ConfigError("DISCORD_TOKEN should be the raw token only, without 'Bot '")
+
+
 _VALID_PROVIDERS = {"groq", "ollama", "gemini", "claude", "openai"}
+_VALID_BOT_PLATFORMS = {"discord", "whatsapp"}
 
 
 def load_config(env: dict[str, str] | None = None) -> Config:
@@ -98,9 +134,28 @@ def load_config(env: dict[str, str] | None = None) -> Config:
             f"LLM_PROVIDER must be one of {sorted(_VALID_PROVIDERS)}, got {provider!r}"
         )
 
+    bot_platform = (_clean(env.get("BOT_PLATFORM")) or "discord").lower()
+    if bot_platform not in _VALID_BOT_PLATFORMS:
+        raise ConfigError(
+            f"BOT_PLATFORM must be one of {sorted(_VALID_BOT_PLATFORMS)}, got {bot_platform!r}"
+        )
+
     discord_token = _clean(env.get("DISCORD_TOKEN"))
-    if not discord_token:
+    if bot_platform == "discord" and not discord_token:
         raise ConfigError("DISCORD_TOKEN is required")
+    if discord_token:
+        _validate_discord_token(discord_token)
+
+    whatsapp_verify_token = _clean(env.get("WHATSAPP_VERIFY_TOKEN"))
+    whatsapp_access_token = _clean(env.get("WHATSAPP_ACCESS_TOKEN"))
+    whatsapp_phone_number_id = _clean(env.get("WHATSAPP_PHONE_NUMBER_ID"))
+    if bot_platform == "whatsapp":
+        if not whatsapp_verify_token:
+            raise ConfigError("WHATSAPP_VERIFY_TOKEN is required when BOT_PLATFORM=whatsapp")
+        if not whatsapp_access_token:
+            raise ConfigError("WHATSAPP_ACCESS_TOKEN is required when BOT_PLATFORM=whatsapp")
+        if not whatsapp_phone_number_id:
+            raise ConfigError("WHATSAPP_PHONE_NUMBER_ID is required when BOT_PLATFORM=whatsapp")
 
     groq_api_key = _clean(env.get("GROQ_API_KEY"))
     tavily_api_key = _clean(env.get("TAVILY_API_KEY"))
@@ -127,6 +182,7 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         raise ConfigError("PRIVACY_MODE must be 'off' or 'local'")
 
     cfg = Config(
+        bot_platform=bot_platform,
         llm_provider=provider,
         groq_api_key=groq_api_key,
         groq_model=_clean(env.get("GROQ_MODEL")) or "llama-3.3-70b-versatile",
@@ -136,6 +192,15 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         discord_token=discord_token,
         discord_allowed_ids=_parse_ids(env.get("DISCORD_ALLOWED_IDS")),
         discord_digest_channel_id=_opt_int(env.get("DISCORD_DIGEST_CHANNEL_ID")),
+        whatsapp_verify_token=whatsapp_verify_token,
+        whatsapp_access_token=whatsapp_access_token,
+        whatsapp_phone_number_id=whatsapp_phone_number_id,
+        whatsapp_allowed_numbers=_parse_whatsapp_allowed(env.get("WHATSAPP_ALLOWED_NUMBERS")),
+        whatsapp_app_secret=_clean(env.get("WHATSAPP_APP_SECRET")),
+        whatsapp_api_version=_clean(env.get("WHATSAPP_API_VERSION")) or "v25.0",
+        whatsapp_host=_clean(env.get("WHATSAPP_HOST")) or "0.0.0.0",
+        whatsapp_port=_parse_int(env.get("WHATSAPP_PORT"), 8080, "WHATSAPP_PORT"),
+        whatsapp_webhook_path=_clean(env.get("WHATSAPP_WEBHOOK_PATH")) or "/whatsapp/webhook",
         db_path=_clean(env.get("DB_PATH")) or "./brain.db",
         article_retention_days=_parse_int(
             env.get("ARTICLE_RETENTION_DAYS"), 90, "ARTICLE_RETENTION_DAYS"
@@ -156,6 +221,9 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     for secret in (
         cfg.groq_api_key,
         cfg.discord_token,
+        cfg.whatsapp_access_token,
+        cfg.whatsapp_app_secret,
+        cfg.whatsapp_verify_token,
         cfg.tavily_api_key,
         cfg.anthropic_api_key,
     ):

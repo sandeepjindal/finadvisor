@@ -1,4 +1,4 @@
-"""Entrypoint: load env FIRST, then config, logging, brain, LLM, and the Discord bot.
+"""Entrypoint: load env FIRST, then config, logging, brain, LLM, and the chat bot.
 
 `.env` must load before `load_config()` reads the environment. `bootstrap()` performs all
 wiring except starting the client, so it is unit-testable. Steps 0.11 + Phase 1-3 wiring.
@@ -14,6 +14,7 @@ from agent.tools import ToolRegistry
 from bot.commands import handle_command
 from bot.discord_bot import build_bot
 from bot.formatting import chunk_message, format_answer
+from bot.whatsapp_bot import build_whatsapp_server
 from brain.db import init_db
 from brain.watchlist import list_watch
 from config import load_config
@@ -66,10 +67,25 @@ def bootstrap() -> SimpleNamespace:
         ans = engine.answer(clean, conn, llm, tools, cfg.max_tool_iters)
         return format_answer(ans)
 
-    bot = build_bot(cfg, handle_message)
-    log.info("fin-advisor bootstrapped (provider=%s)", cfg.llm_provider)
+    bot = build_bot(cfg, handle_message) if cfg.bot_platform == "discord" else None
+    whatsapp_server = (
+        build_whatsapp_server(cfg, handle_message)
+        if cfg.bot_platform == "whatsapp"
+        else None
+    )
+    log.info(
+        "fin-advisor bootstrapped (provider=%s, bot_platform=%s)",
+        cfg.llm_provider,
+        cfg.bot_platform,
+    )
     return SimpleNamespace(
-        cfg=cfg, conn=conn, llm=llm, market=market, tools=tools, bot=bot
+        cfg=cfg,
+        conn=conn,
+        llm=llm,
+        market=market,
+        tools=tools,
+        bot=bot,
+        whatsapp_server=whatsapp_server,
     )
 
 
@@ -96,7 +112,7 @@ def _start_scheduler(ctx):  # pragma: no cover - background timers
         # Feed the backdrop into scoring so macro/catalyst are real, not placebos.
         scores = build_digest_scores(market, rss, conn, rules, _tickers(), events=backdrop)
         post = format_digest(scores, backdrop=backdrop)
-        if cfg.discord_digest_channel_id:
+        if cfg.discord_digest_channel_id and ctx.bot:
             ctx.bot.loop.create_task(_send_digest(ctx, post))
 
     def maintenance():
@@ -119,7 +135,10 @@ async def _send_digest(ctx, text):  # pragma: no cover
 def main() -> None:  # pragma: no cover - runs the live client
     ctx = bootstrap()
     _start_scheduler(ctx)
-    ctx.bot.run(ctx.cfg.discord_token)
+    if ctx.cfg.bot_platform == "whatsapp":
+        ctx.whatsapp_server.serve_forever()
+    else:
+        ctx.bot.run(ctx.cfg.discord_token)
 
 
 if __name__ == "__main__":  # pragma: no cover
