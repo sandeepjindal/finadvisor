@@ -49,17 +49,26 @@ def handle_portfolio(conn, tokens: list[str]) -> str:
     if sub == "add":
         if len(tokens) < 4:
             return "Usage: /portfolio add TICKER SHARES AVG_COST"
+        # A leading '$' marks the price, so shares/cost may be given in either order
+        # ("NVDA 30 $450" or "NVDA $450 30"). Without a '$', order is shares-then-cost.
+        a, b = tokens[2], tokens[3]
+        if a.startswith("$") and not b.startswith("$"):
+            shares_tok, cost_tok = b, a
+        else:
+            shares_tok, cost_tok = a, b
         try:
-            add_holding(
-                conn,
-                tokens[1],
-                float(tokens[2]),
-                float(tokens[3]),
-                " ".join(tokens[4:]),
+            shares = float(shares_tok.lstrip("$"))
+            cost = float(cost_tok.lstrip("$"))
+        except ValueError:
+            return (
+                "⚠️ SHARES and AVG_COST must be numbers "
+                "(mark the price with '$', e.g. /portfolio add NVDA 30 $450)."
             )
+        try:
+            add_holding(conn, tokens[1], shares, cost, " ".join(tokens[4:]))
         except ValueError as e:
             return f"⚠️ {e}"
-        return f"✅ Added {tokens[1].upper()}: {tokens[2]} @ {tokens[3]}."
+        return f"✅ Added {tokens[1].upper()}: {shares:g} @ {cost:g}."
     if sub == "remove":
         if len(tokens) < 2:
             return "Usage: /portfolio remove TICKER"
