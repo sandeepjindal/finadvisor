@@ -1,14 +1,14 @@
 # Plan: WhatsApp Bot Integration & Verification
 
-## Phase 1: Webhook Integration Testing
-- [ ] Task: Scaffold and write webhook integration tests
-  - [ ] Create mock tests in `tests/test_whatsapp_integration.py` that spin up a test `HTTPServer` on a random port.
-  - [ ] Implement simulated webhook GET query challenge validation checks.
-  - [ ] Implement simulated webhook POST request tests with valid signature, invalid signature, whitelisted number, and non-whitelisted number.
-- [ ] Task: Execute tests and fix webhook handler defects
-  - [ ] Run the new integration tests and observe any failures.
-  - [ ] Fix any routing or exception-handling bugs in `bot/whatsapp_bot.py` to ensure tests pass.
-- [ ] Task: Phase Verification & Checkpoint (Refer to workflow.md)
+## Phase 1: Webhook Integration Testing [checkpoint: 3567ecb]
+- [x] Task: Scaffold and write webhook integration tests
+  - [x] Create mock tests in `tests/test_whatsapp_integration.py` that spin up a test `HTTPServer` on a random port.
+  - [x] Implement simulated webhook GET query challenge validation checks.
+  - [x] Implement simulated webhook POST request tests with valid signature, invalid signature, whitelisted number, and non-whitelisted number.
+- [x] Task: Execute tests and fix webhook handler defects
+  - [x] Run the new integration tests and observe any failures.
+  - [x] Fix any routing or exception-handling bugs in `bot/whatsapp_bot.py` to ensure tests pass.
+- [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
 ## Phase 2: Code Quality and Coverage Verification
 - [ ] Task: Verify test coverage targets
