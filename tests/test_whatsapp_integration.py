@@ -240,3 +240,86 @@ def test_post_webhook_message_empty_whitelist_discovery(whatsapp_test_ctx):
     assert "WHATSAPP_ALLOWED_NUMBERS" in kwargs["json"]["text"]["body"]
     assert "99999999" in kwargs["json"]["text"]["body"]
 
+
+def test_post_webhook_message_invalid_json(whatsapp_test_ctx):
+    cfg, _, _, mock_client = whatsapp_test_ctx
+    url = f"http://127.0.0.1:{cfg.whatsapp_port}/webhook"
+
+    body = b"{"  # malformed JSON
+    signature = hmac.new(b"test_secret", body, hashlib.sha256).hexdigest()
+    headers = {
+        "X-Hub-Signature-256": f"sha256={signature}",
+        "Content-Type": "application/json"
+    }
+
+    response = httpx.post(url, content=body, headers=headers)
+    assert response.status_code == 400
+    assert response.text == "invalid json"
+    mock_client.post.assert_not_called()
+
+
+def test_post_webhook_path_not_found(whatsapp_test_ctx):
+    cfg, _, _, mock_client = whatsapp_test_ctx
+    url = f"http://127.0.0.1:{cfg.whatsapp_port}/wrong_path"
+
+    payload = {"hello": "world"}
+    body = json.dumps(payload).encode()
+    signature = hmac.new(b"test_secret", body, hashlib.sha256).hexdigest()
+    headers = {
+        "X-Hub-Signature-256": f"sha256={signature}",
+        "Content-Type": "application/json"
+    }
+
+    response = httpx.post(url, content=body, headers=headers)
+    assert response.status_code == 404
+    assert response.text == "not found"
+    mock_client.post.assert_not_called()
+
+
+def test_post_webhook_message_handler_exception(whatsapp_test_ctx):
+    cfg, server, _, mock_client = whatsapp_test_ctx
+    url = f"http://127.0.0.1:{cfg.whatsapp_port}/webhook"
+
+    # Override the handler to raise an exception
+    async def failing_handler(text):
+        raise ValueError("Simulated handler crash")
+    server.RequestHandlerClass.handle_message = failing_handler
+
+    payload = {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "changes": [
+                    {
+                        "value": {
+                            "messages": [
+                                {
+                                    "from": "15550100",
+                                    "id": "wamid.123",
+                                    "type": "text",
+                                    "text": {"body": "hello crash"},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+    body = json.dumps(payload).encode()
+    signature = hmac.new(b"test_secret", body, hashlib.sha256).hexdigest()
+    headers = {
+        "X-Hub-Signature-256": f"sha256={signature}",
+        "Content-Type": "application/json"
+    }
+
+    # Standard webhook server uses `asyncio.run()` with the class-scoped handler,
+    # let's mock route_message inside the do_POST call to raise an exception.
+    with patch("bot.whatsapp_bot.route_message", side_effect=ValueError("Handler error")):
+        response = httpx.post(url, content=body, headers=headers)
+        # Exception is caught, logged, and returns 200 to Meta
+        assert response.status_code == 200
+        assert response.text == "ok"
+        mock_client.post.assert_not_called()
+
+
