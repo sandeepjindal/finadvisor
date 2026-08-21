@@ -11,7 +11,7 @@
 - [x] Task: Phase Verification & Checkpoint (Refer to workflow.md)
 
 ## Phase 2: Code Quality and Coverage Verification
-- [ ] Task: Verify test coverage targets
+- [~] Task: Verify test coverage targets
   - [ ] Run coverage analysis on `bot/whatsapp_bot.py` using `pytest --cov=bot.whatsapp_bot --cov-report=term-missing`.
   - [ ] Add unit or integration tests to cover any untested branches (e.g., error responses, exceptions during message dispatching).
   - [ ] Confirm coverage on `bot/whatsapp_bot.py` is >80%.

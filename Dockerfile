@@ -11,10 +11,10 @@ WORKDIR /app
 
 # Install deps first (cached layer)
 COPY pyproject.toml uv.lock ./
-RUN uv sync --no-dev --extra data --extra news --extra documents
+RUN uv sync --frozen --no-dev --extra data --extra news --extra documents
 
 # App code
 COPY . .
 
 VOLUME ["/data"]
-CMD ["uv", "run", "--no-dev", "python", "app.py"]
+CMD ["uv", "run", "--no-sync", "python", "app.py"]
