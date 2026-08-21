@@ -1,30 +1,47 @@
-# Secrets
+# Secrets and local configuration
 .env
+.envrc
 
-# Python
+# Python caches and environments
 __pycache__/
-*.py[cod]
+*.py[codz]
+*$py.class
+*.so
 *.egg-info/
+.venv/
+.mypy_cache/
 .pytest_cache/
 .ruff_cache/
 
-# Virtualenvs
-.venv/
-
-# Build artifacts
+# Build and coverage artifacts
 build/
 dist/
+*.egg
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
 # Local brain (SQLite file + WAL sidecars)
 *.db
 *.db-wal
 *.db-shm
 
-# Runtime artifacts / Docker bind-mount volume (NOT the data/ source package)
-/.runtime/
+# Runtime artifacts / Docker bind-mount volume
+.runtime/
 
-# User-dropped documents for ingestion (keep the seeded folder structure via .gitkeep)
+# User-dropped documents for ingestion; keep seeded folder structure
 /documents/**
 !/documents/**/
 !/documents/.gitkeep
 !/documents/**/.gitkeep
+
+# OS/editor artifacts
+.DS_Store
+.vscode/
+.idea/
+tempCodeRunnerFile.py
+
+# Local tooling state
+.pypirc
+.streamlit/secrets.toml
