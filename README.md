@@ -89,11 +89,11 @@ Every figure it reports is **validated against tool output** so it can't fabrica
 ## 🚀 Quickstart (TL;DR)
 
 ```bash
-git clone https://github.com/ashuaeronmeta/Financial-Advisor.git fin-advisor
-cd fin-advisor
+git clone https://github.com/sandeepjindal/finadvisor
+cd finadvisor
 curl -LsSf https://astral.sh/uv/install.sh | sh        # install uv (mac/linux)
 cp .env.example .env                                   # add GROQ_API_KEY (free)
-uv sync --extra data --extra news --extra documents
+uv sync --extra data --extra news --extra documents --extra social
 uv run python scripts/chat.py                          # chat in your terminal — no Discord needed
 ```
 
@@ -104,7 +104,7 @@ uv run python scripts/chat.py                          # chat in your terminal �
 - **Python 3.11+** and [`uv`](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - A free **Groq API key** — https://console.groq.com → API Keys. *(Or run fully local with
   [Ollama](https://ollama.com) — no key needed.)*
-- **For Discord** (optional — the CLI works without it):
+- **For Discord** (optional — the CLI works without it): [WIP]
   1. **https://discord.com/developers/applications** → *New Application* → **Bot** →
      *Reset Token* → copy. Enable **Message Content Intent**.
   2. **OAuth2 → URL Generator** → scope `bot` + *Send Messages* + *Read Message History* →
@@ -112,7 +112,7 @@ uv run python scripts/chat.py                          # chat in your terminal �
      green `+` → *Create My Own*).
   3. Your **user ID**: Discord → *Settings → Advanced → Developer Mode* on, then right-click
      your name → *Copy User ID*.
-- **For WhatsApp** (optional — use instead of Discord):
+- **For WhatsApp** (optional — use instead of Discord): [WIP]
   1. Create a Meta developer app, add the **WhatsApp** product, and copy the temporary or
      permanent access token plus the **Phone number ID**.
   2. Set `BOT_PLATFORM=whatsapp`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, and a
